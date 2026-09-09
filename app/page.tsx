@@ -5,18 +5,31 @@ import { ArrowRight, Check, Clock3, FileSearch, LockKeyhole, ReceiptText, Route,
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase/client";
 
-const problems = ["Unexpected renewal", "Charged after cancellation", "Free trial became paid", "Duplicate charge", "Unrecognized purchase", "Refund ignored or rejected"];
-const fallbackMerchants = ["Apple App Store", "Google Play", "Adobe", "Canva", "Microsoft", "Other"];
+const problems = [
+  { label: "Unexpected renewal", value: "unexpected_renewal" },
+  { label: "Charged after cancellation", value: "charged_after_cancellation" },
+  { label: "Free trial became paid", value: "free_trial_converted" },
+  { label: "Duplicate charge", value: "duplicate_charge" },
+  { label: "Unrecognized purchase", value: "unrecognized_purchase" },
+  { label: "Refund was rejected", value: "refund_rejected" },
+  { label: "Refund was ignored", value: "refund_ignored" },
+] as const;
+type Merchant = { id: string | null; name: string };
+const fallbackMerchants: Merchant[] = ["Apple App Store", "Google Play", "Adobe", "Canva", "Microsoft", "Other"].map((name) => ({ id: null, name }));
 
 export default function Home() {
   const [problem, setProblem] = useState("");
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [chargeDate, setChargeDate] = useState("");
   const [showResult, setShowResult] = useState(false);
   const [merchants, setMerchants] = useState(fallbackMerchants);
   const [databaseConnected, setDatabaseConnected] = useState(false);
-  const canCheck = problem && merchant && amount;
-  const resultCopy = useMemo(() => problem === "Charged after cancellation" ? "A cancellation confirmation can make this a strong evidence-based case." : problem === "Duplicate charge" ? "Two matching transaction records can support a duplicate-billing request." : "Timing, payment route and available evidence will determine your next step.", [problem]);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const canCheck = Boolean(problem && merchant && Number(amount) > 0 && chargeDate);
+  const resultCopy = useMemo(() => problem === "charged_after_cancellation" ? "A cancellation confirmation can make this a strong evidence-based case." : problem === "duplicate_charge" ? "Two matching transaction records can support a duplicate-billing request." : "Timing, payment route and available evidence will determine your next step.", [problem]);
 
   useEffect(() => {
     let active = true;
@@ -25,18 +38,53 @@ export default function Home() {
       if (!supabase) return;
       const { data, error } = await supabase
         .from("companies")
-        .select("name")
+        .select("id,name")
         .eq("active", true)
         .order("name");
 
       if (!active || error || !data?.length) return;
-      setMerchants([...data.map((company) => company.name), "Other"]);
+      setMerchants([...data.map((company) => ({ id: company.id, name: company.name })), { id: null, name: "Other" }]);
       setDatabaseConnected(true);
     }
 
     void loadCompanies();
     return () => { active = false; };
   }, []);
+
+  async function continueAssessment() {
+    const selectedMerchant = merchants.find((item) => item.name === merchant);
+    const route = merchant === "Apple App Store" ? "apple" : merchant === "Google Play" ? "google_play" : merchant === "Other" ? "unknown" : "direct";
+    const draft = {
+      company_id: selectedMerchant?.id ?? null,
+      merchant_name: merchant,
+      problem,
+      route,
+      amount: Number(amount),
+      currency,
+      charge_date: chargeDate,
+      status: "assessed",
+      paid_tier: "free",
+    };
+
+    setSaveError("");
+    setSaveLoading(true);
+    try {
+      if (!supabase) throw new Error("Secure case saving is temporarily unavailable.");
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (!data.session) {
+        sessionStorage.setItem("refundroute_pending_case", JSON.stringify(draft));
+        window.location.assign("/auth");
+        return;
+      }
+      const { error: insertError } = await supabase.from("cases").insert({ ...draft, user_id: data.session.user.id });
+      if (insertError) throw insertError;
+      window.location.assign("/dashboard");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "We could not save this assessment.");
+      setSaveLoading(false);
+    }
+  }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f7f9f8] text-[#13231f]">
@@ -75,11 +123,15 @@ export default function Home() {
             {!showResult ? (
               <div className="space-y-5">
                 <fieldset><legend className="mb-2.5 text-sm font-semibold">What happened?</legend><div className="grid gap-2 sm:grid-cols-2">
-                  {problems.map((item) => <button key={item} type="button" onClick={() => setProblem(item)} className={`rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition ${problem === item ? "border-[#0b8062] bg-[#eaf7f2] text-[#075e49] ring-2 ring-[#0b8062]/10" : "border-[#dfe7e4] bg-[#fbfcfc] text-[#455953] hover:border-[#adc9c0]"}`}>{item}</button>)}
+                  {problems.map((item) => <button key={item.value} type="button" onClick={() => setProblem(item.value)} className={`rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition ${problem === item.value ? "border-[#0b8062] bg-[#eaf7f2] text-[#075e49] ring-2 ring-[#0b8062]/10" : "border-[#dfe7e4] bg-[#fbfcfc] text-[#455953] hover:border-[#adc9c0]"}`}>{item.label}</button>)}
                 </div></fieldset>
-                <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
-                  <label className="text-sm font-semibold">Company or platform<select value={merchant} onChange={(event) => setMerchant(event.target.value)} className="mt-2 h-12 w-full rounded-xl border border-[#d7e2de] bg-white px-3.5 font-normal text-[#233b34] outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10"><option value="">Select one</option>{merchants.map((item) => <option key={item}>{item}</option>)}</select></label>
-                  <label className="text-sm font-semibold">Amount charged<input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="$ 0.00" className="mt-2 h-12 w-full rounded-xl border border-[#d7e2de] bg-white px-3.5 font-normal text-[#233b34] outline-none placeholder:text-[#91a09b] focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm font-semibold">Company or platform<select value={merchant} onChange={(event) => setMerchant(event.target.value)} className="mt-2 h-12 w-full rounded-xl border border-[#d7e2de] bg-white px-3.5 font-normal text-[#233b34] outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10"><option value="">Select one</option>{merchants.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
+                  <label className="text-sm font-semibold">Charge date<input required type="date" value={chargeDate} onChange={(event) => setChargeDate(event.target.value)} max={new Date().toISOString().slice(0, 10)} className="mt-2 h-12 w-full rounded-xl border border-[#d7e2de] bg-white px-3.5 font-normal text-[#233b34] outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
+                  <label className="text-sm font-semibold">Currency<select value={currency} onChange={(event) => setCurrency(event.target.value)} className="mt-2 h-12 w-full rounded-xl border border-[#d7e2de] bg-white px-3.5 font-normal text-[#233b34] outline-none focus:border-[#0b8062]"><option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option><option>AUD</option><option>AED</option><option>SAR</option><option>INR</option><option>NGN</option><option>GMD</option></select></label>
+                  <label className="text-sm font-semibold">Amount charged<input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" type="number" min="0.01" step="0.01" placeholder="0.00" className="mt-2 h-12 w-full rounded-xl border border-[#d7e2de] bg-white px-3.5 font-normal text-[#233b34] outline-none placeholder:text-[#91a09b] focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label>
                 </div>
                 <button type="button" className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b9cdc6] bg-[#f6faf8] px-4 py-4 text-sm font-medium text-[#49665e] transition hover:border-[#7ba898] hover:bg-[#f0f8f5]"><Upload className="size-4.5" /> Upload a receipt or screenshot <span className="font-normal text-[#7a8b85]">(optional)</span></button>
                 <Button disabled={!canCheck} onClick={() => setShowResult(true)} className="h-13 w-full rounded-xl bg-[#0b6b53] text-base font-semibold text-white shadow-[0_10px_24px_rgba(11,107,83,.2)] hover:bg-[#095d49] disabled:bg-[#b7c8c2]">Check my charge <ArrowRight className="ml-1 size-4.5" /></Button>
@@ -89,7 +141,8 @@ export default function Home() {
               <div className="rounded-2xl border border-[#b9ddd1] bg-[#f0faf6] p-5 sm:p-6">
                 <div className="flex items-start gap-4"><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#0b8062] text-white"><FileSearch className="size-5" /></span><div><p className="text-xs font-bold uppercase tracking-[.13em] text-[#0b8062]">Preliminary result</p><h3 className="mt-1.5 text-xl font-semibold">Your case needs a timing and evidence check</h3><p className="mt-2 text-sm leading-6 text-[#48645b]">{resultCopy}</p></div></div>
                 <div className="mt-5 grid gap-2.5 sm:grid-cols-2"><div className="rounded-xl bg-white p-3.5"><span className="text-xs text-[#6c7c76]">Payment route</span><p className="mt-1 font-semibold">{merchant}</p></div><div className="rounded-xl bg-white p-3.5"><span className="text-xs text-[#6c7c76]">Urgency</span><p className="mt-1 flex items-center gap-1.5 font-semibold"><Clock3 className="size-4 text-[#c47b13]" /> Confirm charge date</p></div></div>
-                <Button className="mt-5 h-12 w-full rounded-xl bg-[#0b6b53] font-semibold hover:bg-[#095d49]">Continue assessment <ArrowRight className="ml-1 size-4" /></Button>
+                {saveError && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{saveError}</p>}
+                <Button disabled={saveLoading} onClick={continueAssessment} className="mt-5 h-12 w-full rounded-xl bg-[#0b6b53] font-semibold hover:bg-[#095d49]">{saveLoading ? "Saving…" : "Continue assessment"} <ArrowRight className="ml-1 size-4" /></Button>
                 <button type="button" onClick={() => setShowResult(false)} className="mt-3 w-full text-sm font-medium text-[#527168] hover:text-[#0b6b53]">Edit details</button>
               </div>
             )}
