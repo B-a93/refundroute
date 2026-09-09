@@ -317,9 +317,9 @@ insert into public.companies (slug,name,official_website,support_url,last_verifi
 on conflict (slug) do nothing;
 
 insert into public.billing_descriptors (company_id, descriptor, route)
-select id, 'APPLE.COM/BILL', 'apple' from public.companies where slug = 'apple'
-union all select id, 'GOOGLE*', 'google_play' from public.companies where slug = 'google-play'
-union all select id, 'ADOBE', 'direct' from public.companies where slug = 'adobe'
-union all select id, 'CANVA', 'direct' from public.companies where slug = 'canva'
-union all select id, 'MICROSOFT*', 'direct' from public.companies where slug = 'microsoft'
+select id, 'APPLE.COM/BILL', 'apple'::public.purchase_route from public.companies where slug = 'apple'
+union all select id, 'GOOGLE*', 'google_play'::public.purchase_route from public.companies where slug = 'google-play'
+union all select id, 'ADOBE', 'direct'::public.purchase_route from public.companies where slug = 'adobe'
+union all select id, 'CANVA', 'direct'::public.purchase_route from public.companies where slug = 'canva'
+union all select id, 'MICROSOFT*', 'direct'::public.purchase_route from public.companies where slug = 'microsoft'
 on conflict do nothing;
