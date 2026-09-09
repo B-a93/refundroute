@@ -51,7 +51,7 @@ export default function Home() {
             <a className="transition hover:text-[#0b6b53]" href="#supported">Supported companies</a>
             <a className="transition hover:text-[#0b6b53]" href="#pricing">Pricing</a>
           </nav>
-          <Button variant="outline" className="rounded-full border-[#cbd8d3] bg-white px-5 text-[#26453d]">Sign in</Button>
+          <Button asChild variant="outline" className="rounded-full border-[#cbd8d3] bg-white px-5 text-[#26453d]"><a href="/auth">Sign in</a></Button>
         </div>
       </header>
 
