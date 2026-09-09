@@ -1,19 +1,42 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, Clock3, FileSearch, LockKeyhole, ReceiptText, Route, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabase/client";
 
 const problems = ["Unexpected renewal", "Charged after cancellation", "Free trial became paid", "Duplicate charge", "Unrecognized purchase", "Refund ignored or rejected"];
-const merchants = ["Apple App Store", "Google Play", "Adobe", "Canva", "Microsoft", "Other"];
+const fallbackMerchants = ["Apple App Store", "Google Play", "Adobe", "Canva", "Microsoft", "Other"];
 
 export default function Home() {
   const [problem, setProblem] = useState("");
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [showResult, setShowResult] = useState(false);
+  const [merchants, setMerchants] = useState(fallbackMerchants);
+  const [databaseConnected, setDatabaseConnected] = useState(false);
   const canCheck = problem && merchant && amount;
   const resultCopy = useMemo(() => problem === "Charged after cancellation" ? "A cancellation confirmation can make this a strong evidence-based case." : problem === "Duplicate charge" ? "Two matching transaction records can support a duplicate-billing request." : "Timing, payment route and available evidence will determine your next step.", [problem]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCompanies() {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from("companies")
+        .select("name")
+        .eq("active", true)
+        .order("name");
+
+      if (!active || error || !data?.length) return;
+      setMerchants([...data.map((company) => company.name), "Other"]);
+      setDatabaseConnected(true);
+    }
+
+    void loadCompanies();
+    return () => { active = false; };
+  }, []);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f7f9f8] text-[#13231f]">
@@ -47,7 +70,7 @@ export default function Home() {
           <div className="relative rounded-[28px] border border-[#d7e2de] bg-white p-5 shadow-[0_30px_80px_rgba(24,57,48,.12)] sm:p-8">
             <div className="mb-7 flex items-start justify-between gap-4">
               <div><p className="text-sm font-semibold uppercase tracking-[.13em] text-[#0b8062]">Free assessment</p><h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">Check my charge</h2><p className="mt-2 text-sm leading-6 text-[#64746f]">Enter the details you know. You can add evidence in the next step.</p></div>
-              <span className="hidden rounded-full bg-[#eef7f4] px-3 py-1.5 text-xs font-semibold text-[#32705e] sm:block">About 2 min</span>
+              <span className="hidden rounded-full bg-[#eef7f4] px-3 py-1.5 text-xs font-semibold text-[#32705e] sm:block">{databaseConnected ? `${merchants.length - 1} verified routes` : "About 2 min"}</span>
             </div>
             {!showResult ? (
               <div className="space-y-5">
