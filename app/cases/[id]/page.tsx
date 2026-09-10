@@ -3,7 +3,7 @@
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Download, FileSearch, FileText, LoaderCircle, LockKeyhole, Route, UploadCloud } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Download, FileSearch, FileText, LoaderCircle, LockKeyhole, Route, ShieldCheck, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase/client";
 
@@ -15,6 +15,8 @@ type CaseRecord = {
   amount: number | null;
   currency: string | null;
   charge_date: string | null;
+  strength_score: number | null;
+  strength_label: string | null;
 };
 
 type DocumentRecord = {
@@ -31,6 +33,9 @@ type ExtractedField = { id: string; document_id: string; field_name: string; fie
 
 const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const maxSize = 10 * 1024 * 1024;
+const reviewFieldNames = ["merchant_name", "amount", "currency", "charge_date", "transaction_reference", "product_name"] as const;
+type ReviewValues = Record<(typeof reviewFieldNames)[number], string>;
+const emptyReview: ReviewValues = { merchant_name: "", amount: "", currency: "", charge_date: "", transaction_reference: "", product_name: "" };
 
 export default function CasePage() {
   const params = useParams<{ id: string }>();
@@ -43,6 +48,8 @@ export default function CasePage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [reviewValues, setReviewValues] = useState<ReviewValues>(emptyReview);
+  const [confirming, setConfirming] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const loadCase = useCallback(async () => {
@@ -52,7 +59,7 @@ export default function CasePage() {
     setUser(sessionData.session.user);
 
     const [{ data: caseData, error: caseError }, { data: documentData, error: documentError }, { data: fieldData }] = await Promise.all([
-      supabase.from("cases").select("id,merchant_name,problem,status,amount,currency,charge_date").eq("id", caseId).single(),
+      supabase.from("cases").select("id,merchant_name,problem,status,amount,currency,charge_date,strength_score,strength_label").eq("id", caseId).single(),
       supabase.from("documents").select("id,original_filename,content_type,size_bytes,object_path,processing_status,created_at").eq("case_id", caseId).order("created_at", { ascending: false }),
       supabase.from("extracted_fields").select("id,document_id,field_name,field_value,confidence").eq("case_id", caseId).order("created_at"),
     ]);
@@ -65,6 +72,19 @@ export default function CasePage() {
   }, [caseId]);
 
   useEffect(() => { void loadCase(); }, [loadCase]);
+
+  useEffect(() => {
+    if (!caseRecord || extractedFields.length === 0) return;
+    const values = { ...emptyReview };
+    for (const field of extractedFields) {
+      if (reviewFieldNames.includes(field.field_name as keyof ReviewValues) && field.field_value) values[field.field_name as keyof ReviewValues] = field.field_value;
+    }
+    values.merchant_name ||= caseRecord.merchant_name ?? "";
+    values.amount ||= caseRecord.amount?.toString() ?? "";
+    values.currency ||= caseRecord.currency ?? "";
+    values.charge_date ||= caseRecord.charge_date ?? "";
+    setReviewValues(values);
+  }, [caseRecord, extractedFields]);
 
   async function requestExtraction(documentId: string) {
     if (!supabase) throw new Error("Automatic reading is unavailable.");
@@ -142,6 +162,42 @@ export default function CasePage() {
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
+  async function confirmDetails() {
+    if (!supabase || !user || !caseRecord) return;
+    const client = supabase;
+    setError(""); setSuccess("");
+    if (!reviewValues.merchant_name || Number(reviewValues.amount) <= 0 || !/^[A-Z]{3}$/.test(reviewValues.currency.toUpperCase()) || !reviewValues.charge_date) {
+      setError("Confirm the merchant, amount, three-letter currency and charge date."); return;
+    }
+    setConfirming(true);
+    try {
+      await Promise.all(extractedFields.map((field) => client.from("extracted_fields").update({ confirmed_value: reviewValues[field.field_name as keyof ReviewValues] ?? field.field_value, confirmed_at: new Date().toISOString() }).eq("id", field.id)));
+      let score = 25;
+      score += reviewValues.merchant_name ? 10 : 0;
+      score += Number(reviewValues.amount) > 0 ? 10 : 0;
+      score += reviewValues.currency ? 5 : 0;
+      score += reviewValues.charge_date ? 10 : 0;
+      score += reviewValues.transaction_reference ? 10 : 0;
+      score += reviewValues.product_name ? 5 : 0;
+      const strengthLabel = score >= 75 ? "Strong" : score >= 50 ? "Developing" : "Weak";
+      const status = score >= 75 ? "ready" : "evidence_needed";
+      const { error: caseError } = await client.from("cases").update({ merchant_name: reviewValues.merchant_name, amount: Number(reviewValues.amount), currency: reviewValues.currency.toUpperCase(), charge_date: reviewValues.charge_date, product_name: reviewValues.product_name || null, strength_score: score, strength_label: strengthLabel, urgency_label: "Check deadlines", status }).eq("id", caseRecord.id);
+      if (caseError) throw caseError;
+      const checklist = [
+        { evidence_type: "proof_of_purchase", label: "Proof of purchase", status: "available", document_id: documents[0]?.id ?? null, importance: 3 },
+        { evidence_type: "transaction_reference", label: "Transaction reference", status: reviewValues.transaction_reference ? "available" : "missing", document_id: reviewValues.transaction_reference ? documents[0]?.id ?? null : null, importance: 2 },
+        { evidence_type: "seller_response", label: "Seller response", status: "missing", document_id: null, importance: 2 },
+        ...(caseRecord.problem === "charged_after_cancellation" ? [{ evidence_type: "cancellation_confirmation", label: "Cancellation confirmation", status: "required", document_id: null, importance: 3 }] : []),
+      ].map((item) => ({ ...item, case_id: caseRecord.id, user_id: user.id }));
+      await client.from("evidence_items").upsert(checklist, { onConflict: "case_id,evidence_type" });
+      await client.from("case_events").insert({ case_id: caseRecord.id, user_id: user.id, event_type: "details_confirmed", title: "Transaction details confirmed", details: { strength_score: score, strength_label: strengthLabel } });
+      setCaseRecord({ ...caseRecord, merchant_name: reviewValues.merchant_name, amount: Number(reviewValues.amount), currency: reviewValues.currency.toUpperCase(), charge_date: reviewValues.charge_date, strength_score: score, strength_label: strengthLabel, status });
+      setSuccess(`Details confirmed. Evidence strength: ${score}/100 (${strengthLabel}).`);
+    } catch (confirmationError) {
+      setError(confirmationError instanceof Error ? confirmationError.message : "We could not confirm these details.");
+    } finally { setConfirming(false); }
+  }
+
   if (loading) return <main className="grid min-h-screen place-items-center bg-[#f4f8f6]"><p className="text-[#5c716a]">Opening your case…</p></main>;
 
   return <main className="min-h-screen bg-[#f4f8f6] text-[#13231f]">
@@ -158,7 +214,7 @@ export default function CasePage() {
             {success && <p role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><CheckCircle2 className="size-4" />{success}</p>}
             <div className="mt-7"><h3 className="font-semibold">Uploaded files</h3>{documents.length === 0 ? <p className="mt-3 rounded-xl bg-[#f7f9f8] px-4 py-5 text-sm text-[#71817c]">No evidence uploaded yet.</p> : <div className="mt-3 divide-y">{documents.map(document => <div key={document.id} className="flex items-center justify-between gap-4 py-4"><div className="flex min-w-0 items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5f2] text-[#0b755a]"><FileText className="size-5" /></span><div className="min-w-0"><p className="truncate text-sm font-semibold">{document.original_filename}</p><p className="mt-1 text-xs text-[#75857f]">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB · <span className="capitalize">{document.processing_status}</span></p></div></div><div className="flex items-center"><Button variant="ghost" size="sm" disabled={uploading} onClick={() => extractDocument(document.id)}>{document.processing_status === "completed" ? "Read again" : "Read details"}</Button><Button variant="ghost" size="icon" onClick={() => downloadDocument(document)} aria-label={`Open ${document.original_filename}`}><Download className="size-4" /></Button></div></div>)}</div>}</div>
           </section>
-          <aside className="space-y-5"><section className="rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><FileSearch className="size-4 text-[#0b755a]" />Details found</h2>{uploading && <p className="mt-4 flex items-center gap-2 text-sm text-[#667a73]"><LoaderCircle className="size-4 animate-spin" />Reading document…</p>}{extractedFields.length === 0 && !uploading ? <p className="mt-3 text-sm leading-6 text-[#71817c]">Upload evidence to automatically identify transaction details.</p> : <dl className="mt-4 divide-y">{extractedFields.filter(field => field.field_value).map(field => <div key={field.id} className="py-3"><dt className="text-xs capitalize text-[#788782]">{field.field_name.replaceAll("_", " ")}</dt><dd className="mt-1 flex items-center justify-between gap-3 text-sm font-semibold"><span>{field.field_value}</span>{field.confidence !== null && <span className="text-xs font-normal text-[#74857f]">{Math.round(field.confidence * 100)}%</span>}</dd></div>)}</dl>}</section><section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Case details</h2><dl className="mt-4 space-y-4 text-sm"><div><dt className="text-[#788782]">Charge date</dt><dd className="mt-1 font-semibold">{caseRecord.charge_date ? new Date(`${caseRecord.charge_date}T00:00:00`).toLocaleDateString() : "Not provided"}</dd></div><div><dt className="text-[#788782]">Current stage</dt><dd className="mt-1 capitalize font-semibold">{caseRecord.status.replaceAll("_", " ")}</dd></div></dl></section><section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="flex items-center gap-2 font-semibold text-[#155c49]"><LockKeyhole className="size-4" />Private evidence</p><p className="mt-2 text-sm leading-6 text-[#547068]">Files are stored in a private bucket. Only your signed-in account can access this case folder.</p></section></aside>
+          <aside className="space-y-5"><section className="rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><FileSearch className="size-4 text-[#0b755a]" />Review details</h2>{uploading && <p className="mt-4 flex items-center gap-2 text-sm text-[#667a73]"><LoaderCircle className="size-4 animate-spin" />Reading document…</p>}{extractedFields.length === 0 && !uploading ? <p className="mt-3 text-sm leading-6 text-[#71817c]">Upload evidence to automatically identify transaction details.</p> : <div className="mt-4 space-y-3">{caseRecord.charge_date && reviewValues.charge_date && caseRecord.charge_date !== reviewValues.charge_date && <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800"><AlertTriangle className="mt-0.5 size-4 shrink-0" />The extracted date differs from the date you entered. Please correct it before confirming.</p>}{reviewFieldNames.map((fieldName) => { const extracted = extractedFields.find(field => field.field_name === fieldName); return <label key={fieldName} className="block text-sm font-semibold capitalize">{fieldName.replaceAll("_", " ")} {extracted?.confidence !== null && extracted?.confidence !== undefined && <span className="float-right text-xs font-normal text-[#74857f]">{Math.round(extracted.confidence * 100)}% confidence</span>}<input type={fieldName === "charge_date" ? "date" : fieldName === "amount" ? "number" : "text"} step={fieldName === "amount" ? "0.01" : undefined} value={reviewValues[fieldName]} onChange={(event) => setReviewValues({ ...reviewValues, [fieldName]: fieldName === "currency" ? event.target.value.toUpperCase() : event.target.value })} className="mt-1.5 h-11 w-full rounded-xl border border-[#d7e2de] bg-white px-3 font-normal outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label>})}<Button disabled={confirming} onClick={confirmDetails} className="mt-2 h-11 w-full rounded-xl bg-[#0b6b53] font-semibold hover:bg-[#095d49]"><ShieldCheck className="mr-2 size-4" />{confirming ? "Confirming…" : "Confirm details and assess case"}</Button></div>}</section>{caseRecord.strength_score !== null && <section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="text-sm font-semibold text-[#557068]">Evidence strength</p><div className="mt-2 flex items-end justify-between"><p className="text-3xl font-semibold text-[#155c49]">{caseRecord.strength_score}/100</p><p className="font-semibold text-[#155c49]">{caseRecord.strength_label}</p></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-[#0b8062]" style={{ width: `${caseRecord.strength_score}%` }} /></div><p className="mt-3 text-sm leading-6 text-[#557068]">Add missing cancellation proof or seller responses to strengthen the recovery pack.</p></section>}<section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Case details</h2><dl className="mt-4 space-y-4 text-sm"><div><dt className="text-[#788782]">Charge date</dt><dd className="mt-1 font-semibold">{caseRecord.charge_date ? new Date(`${caseRecord.charge_date}T00:00:00`).toLocaleDateString() : "Not provided"}</dd></div><div><dt className="text-[#788782]">Current stage</dt><dd className="mt-1 capitalize font-semibold">{caseRecord.status.replaceAll("_", " ")}</dd></div></dl></section><section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="flex items-center gap-2 font-semibold text-[#155c49]"><LockKeyhole className="size-4" />Private evidence</p><p className="mt-2 text-sm leading-6 text-[#547068]">Files are stored in a private bucket. Only your signed-in account can access this case folder.</p></section></aside>
         </div>
       </>}
     </div>
