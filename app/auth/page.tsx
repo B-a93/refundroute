@@ -81,7 +81,7 @@ export default function AuthPage() {
           <Button disabled={loading} className="h-12 w-full rounded-xl bg-[#0b6b53] text-base font-semibold hover:bg-[#095d49]">{loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}<ArrowRight className="ml-1 size-4" /></Button>
         </form>
         {mode === "signin" && <button onClick={resetPassword} className="mt-5 w-full text-sm font-semibold text-[#0b6b53] hover:underline">Forgot your password?</button>}
-        <p className="mt-8 text-center text-xs leading-5 text-[#7b8b85]">By continuing, you agree to MyResolveCenter’s Terms and Privacy Policy.</p>
+        <p className="mt-8 text-center text-xs leading-5 text-[#7b8b85]">By continuing, you agree to MyResolveCenter’s <a href="/terms" className="underline hover:text-[#0b6b53]">Terms</a> and <a href="/privacy" className="underline hover:text-[#0b6b53]">Privacy Policy</a>.</p>
       </div>
     </section>
   </main>;
