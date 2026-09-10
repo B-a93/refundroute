@@ -66,6 +66,19 @@ export default function CasePage() {
 
   useEffect(() => { void loadCase(); }, [loadCase]);
 
+  async function requestExtraction(documentId: string) {
+    if (!supabase) throw new Error("Automatic reading is unavailable.");
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error("Sign in again to read this document.");
+    const response = await fetch("/api/extract-evidence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
+      body: JSON.stringify({ document_id: documentId }),
+    });
+    const result = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) throw new Error(result.error || "Automatic reading failed.");
+  }
+
   async function uploadEvidence(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -96,8 +109,12 @@ export default function CasePage() {
       }
       await supabase.from("case_events").insert({ case_id: caseRecord.id, user_id: user.id, event_type: "evidence_uploaded", title: "Evidence uploaded", details: { filename: file.name } });
       setSuccess("Evidence uploaded securely. Reading its details…");
-      const { error: extractionError } = await supabase.functions.invoke("extract-evidence", { body: { document_id: savedDocument.id } });
-      setSuccess(extractionError ? "Evidence uploaded. Automatic reading is not configured yet." : "Evidence uploaded and details extracted.");
+      try {
+        await requestExtraction(savedDocument.id);
+        setSuccess("Evidence uploaded and details extracted.");
+      } catch {
+        setSuccess("Evidence uploaded. Select Read details after automatic reading is configured.");
+      }
       await loadCase();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "We could not upload this file.");
@@ -107,9 +124,13 @@ export default function CasePage() {
   async function extractDocument(documentId: string) {
     if (!supabase) return;
     setError(""); setSuccess(""); setUploading(true);
-    const { error: extractionError } = await supabase.functions.invoke("extract-evidence", { body: { document_id: documentId } });
-    if (extractionError) setError("Automatic reading is not available yet. Your uploaded file is safe.");
-    else { setSuccess("Document details extracted."); await loadCase(); }
+    try {
+      await requestExtraction(documentId);
+      setSuccess("Document details extracted.");
+      await loadCase();
+    } catch (extractionError) {
+      setError(extractionError instanceof Error ? extractionError.message : "Automatic reading failed. Your uploaded file is safe.");
+    }
     setUploading(false);
   }
 
