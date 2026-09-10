@@ -33,10 +33,13 @@ export async function POST(request: NextRequest) {
 
     const { data: caseRecord, error: caseError } = await supabase
       .from("cases")
-      .select("id,user_id,company_id,merchant_name,recovery_type,problem,route,product_name,amount,currency,charge_date,strength_score,strength_label")
+      .select("id,user_id,company_id,merchant_name,recovery_type,problem,route,product_name,amount,currency,charge_date,strength_score,strength_label,paid_tier")
       .eq("id", payload.case_id)
       .single();
     if (caseError || !caseRecord || caseRecord.user_id !== userData.user.id) throw new Error("Case not found.");
+    if (caseRecord.paid_tier === "free") {
+      return NextResponse.json({ error: "Unlock guided recovery to generate and save a personalized request." }, { status: 402 });
+    }
     if (!caseRecord.merchant_name || !caseRecord.amount || !caseRecord.currency || !caseRecord.charge_date) {
       throw new Error("Confirm the merchant, amount, currency and charge date before generating a request.");
     }
