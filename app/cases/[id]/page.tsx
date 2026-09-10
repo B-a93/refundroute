@@ -3,7 +3,7 @@
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { useParams } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Download, FileSearch, FileText, LoaderCircle, LockKeyhole, Route, ShieldCheck, UploadCloud, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Copy, Download, ExternalLink, FileSearch, FileText, LoaderCircle, LockKeyhole, Route, Send, ShieldCheck, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase/client";
 
@@ -19,6 +19,7 @@ type CaseRecord = {
   product_name: string | null;
   strength_score: number | null;
   strength_label: string | null;
+  route: "direct" | "apple" | "google_play" | "paypal" | "bank_card" | "mobile_carrier" | "reseller" | "unknown";
 };
 
 type DocumentRecord = {
@@ -33,6 +34,7 @@ type DocumentRecord = {
 
 type ExtractedField = { id: string; document_id: string; field_name: string; field_value: string | null; confidence: number | null };
 type EvidenceItem = { id: string; evidence_type: string; label: string; status: "missing" | "available" | "required" | "not_applicable"; importance: number; document_id: string | null };
+type RefundDraft = { id: string; subject: string; body: string; route_summary?: string; next_step?: string; support_url?: string | null };
 
 const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const maxSize = 10 * 1024 * 1024;
@@ -55,6 +57,10 @@ export default function CasePage() {
   const [reviewValues, setReviewValues] = useState<ReviewValues>(emptyReview);
   const [confirming, setConfirming] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("proof_of_purchase");
+  const [refundDraft, setRefundDraft] = useState<RefundDraft | null>(null);
+  const [generatingRequest, setGeneratingRequest] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [copied, setCopied] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const loadCase = useCallback(async () => {
@@ -63,11 +69,12 @@ export default function CasePage() {
     if (!sessionData.session) { window.location.replace("/auth"); return; }
     setUser(sessionData.session.user);
 
-    const [{ data: caseData, error: caseError }, { data: documentData, error: documentError }, { data: fieldData }, { data: evidenceData }] = await Promise.all([
-      supabase.from("cases").select("id,merchant_name,problem,status,recovery_type,amount,currency,charge_date,product_name,strength_score,strength_label").eq("id", caseId).single(),
+    const [{ data: caseData, error: caseError }, { data: documentData, error: documentError }, { data: fieldData }, { data: evidenceData }, { data: messageData }] = await Promise.all([
+      supabase.from("cases").select("id,merchant_name,problem,status,recovery_type,amount,currency,charge_date,product_name,strength_score,strength_label,route").eq("id", caseId).single(),
       supabase.from("documents").select("id,original_filename,content_type,size_bytes,object_path,processing_status,created_at").eq("case_id", caseId).order("created_at", { ascending: false }),
       supabase.from("extracted_fields").select("id,document_id,field_name,field_value,confidence").eq("case_id", caseId).order("created_at"),
       supabase.from("evidence_items").select("id,evidence_type,label,status,importance,document_id").eq("case_id", caseId).order("importance", { ascending: false }),
+      supabase.from("messages").select("id,subject,body").eq("case_id", caseId).eq("message_type", "refund_request").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (caseError) setError(caseError.code === "PGRST116" ? "This case does not exist or you do not have access to it." : caseError.message);
     else setCaseRecord(caseData as CaseRecord);
@@ -75,6 +82,7 @@ export default function CasePage() {
     setDocuments((documentData as DocumentRecord[] | null) ?? []);
     setExtractedFields((fieldData as ExtractedField[] | null) ?? []);
     setEvidenceItems((evidenceData as EvidenceItem[] | null) ?? []);
+    if (messageData) setRefundDraft({ id: messageData.id, subject: messageData.subject ?? "Refund request", body: messageData.body });
     setLoading(false);
   }, [caseId]);
 
@@ -248,6 +256,44 @@ export default function CasePage() {
     await recalculateStrength(nextItems);
   }
 
+  async function generateRefundRequest() {
+    if (!supabase || !caseRecord) return;
+    setError(""); setSuccess(""); setGeneratingRequest(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) throw new Error("Sign in again to generate your request.");
+      const response = await fetch("/api/generate-refund-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
+        body: JSON.stringify({ case_id: caseRecord.id }),
+      });
+      const result = await response.json().catch(() => ({})) as RefundDraft & { error?: string; route_summary: string; next_step: string };
+      if (!response.ok) throw new Error(result.error || "We could not generate the refund request.");
+      setRefundDraft(result);
+      setSuccess("Your refund request is ready to review.");
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : "We could not generate the refund request.");
+    } finally { setGeneratingRequest(false); }
+  }
+
+  async function saveDraft() {
+    if (!supabase || !refundDraft) return;
+    setError(""); setSavingDraft(true);
+    const { error: draftError } = await supabase.from("messages").update({ subject: refundDraft.subject, body: refundDraft.body }).eq("id", refundDraft.id);
+    if (draftError) setError(draftError.message);
+    else setSuccess("Draft changes saved privately.");
+    setSavingDraft(false);
+  }
+
+  async function copyDraft() {
+    if (!refundDraft) return;
+    await navigator.clipboard.writeText(`Subject: ${refundDraft.subject}\n\n${refundDraft.body}`);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  const routeActionUrl = refundDraft?.support_url || (caseRecord?.route === "apple" ? "https://reportaproblem.apple.com/" : caseRecord?.route === "google_play" ? "https://support.google.com/googleplay/" : null);
+
   if (loading) return <main className="grid min-h-screen place-items-center bg-[#f4f8f6]"><p className="text-[#5c716a]">Opening your case…</p></main>;
 
   return <main className="min-h-screen bg-[#f4f8f6] text-[#13231f]">
@@ -267,6 +313,13 @@ export default function CasePage() {
           </section>
           <aside className="space-y-5"><section className="rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><FileSearch className="size-4 text-[#0b755a]" />Review details</h2>{uploading && <p className="mt-4 flex items-center gap-2 text-sm text-[#667a73]"><LoaderCircle className="size-4 animate-spin" />Reading document…</p>}{extractedFields.length === 0 && !uploading ? <p className="mt-3 text-sm leading-6 text-[#71817c]">Upload evidence to automatically identify transaction details.</p> : <div className="mt-4 space-y-3">{caseRecord.charge_date && reviewValues.charge_date && caseRecord.charge_date !== reviewValues.charge_date && <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800"><AlertTriangle className="mt-0.5 size-4 shrink-0" />The extracted date differs from the date you entered. Please correct it before confirming.</p>}{reviewFieldNames.map((fieldName) => { const extracted = extractedFields.find(field => field.field_name === fieldName); return <label key={fieldName} className="block text-sm font-semibold capitalize">{fieldName.replaceAll("_", " ")} {extracted?.confidence !== null && extracted?.confidence !== undefined && <span className="float-right text-xs font-normal text-[#74857f]">{Math.round(extracted.confidence * 100)}% confidence</span>}<input type={fieldName === "charge_date" ? "date" : fieldName === "amount" ? "number" : "text"} step={fieldName === "amount" ? "0.01" : undefined} value={reviewValues[fieldName]} onChange={(event) => setReviewValues({ ...reviewValues, [fieldName]: fieldName === "currency" ? event.target.value.toUpperCase() : event.target.value })} className="mt-1.5 h-11 w-full rounded-xl border border-[#d7e2de] bg-white px-3 font-normal outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label>})}<Button disabled={confirming} onClick={confirmDetails} className="mt-2 h-11 w-full rounded-xl bg-[#0b6b53] font-semibold hover:bg-[#095d49]"><ShieldCheck className="mr-2 size-4" />{confirming ? "Confirming…" : "Confirm details and assess case"}</Button></div>}</section>{caseRecord.strength_score !== null && <section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="text-sm font-semibold text-[#557068]">Evidence strength</p><div className="mt-2 flex items-end justify-between"><p className="text-3xl font-semibold text-[#155c49]">{caseRecord.strength_score}/100</p><p className="font-semibold text-[#155c49]">{caseRecord.strength_label}</p></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-[#0b8062]" style={{ width: `${caseRecord.strength_score}%` }} /></div><p className="mt-3 text-sm leading-6 text-[#557068]">{caseRecord.recovery_type === "online_purchase" ? "Add seller messages, delivery records or item photos when relevant." : "Add cancellation proof or seller responses when relevant."}</p></section>}<section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Case details</h2><dl className="mt-4 space-y-4 text-sm"><div><dt className="text-[#788782]">Recovery type</dt><dd className="mt-1 font-semibold">{caseRecord.recovery_type === "online_purchase" ? "Online purchase" : "Online subscription"}</dd></div><div><dt className="text-[#788782]">Charge date</dt><dd className="mt-1 font-semibold">{caseRecord.charge_date ? new Date(`${caseRecord.charge_date}T00:00:00`).toLocaleDateString() : "Not provided"}</dd></div><div><dt className="text-[#788782]">Current stage</dt><dd className="mt-1 capitalize font-semibold">{caseRecord.status.replaceAll("_", " ")}</dd></div></dl></section><section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="flex items-center gap-2 font-semibold text-[#155c49]"><LockKeyhole className="size-4" />Private evidence</p><p className="mt-2 text-sm leading-6 text-[#547068]">Files are stored in a private bucket. Only your signed-in account can access this case folder.</p></section></aside>
         </div>
+        {caseRecord.strength_score !== null && <section className="mt-6 rounded-2xl border bg-white p-5 sm:p-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Next action</p><h2 className="mt-2 text-2xl font-semibold tracking-[-.03em]">Refund request draft</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[#667a73]">Generate a request from your confirmed case facts, review it, then copy it into the company’s official support channel.</p></div><Button disabled={generatingRequest} onClick={generateRefundRequest} className="h-11 rounded-xl bg-[#0b6b53] px-5 font-semibold hover:bg-[#095d49]"><Send className="mr-1 size-4" />{generatingRequest ? "Generating…" : refundDraft ? "Generate again" : "Generate my refund request"}</Button></div>
+          {refundDraft ? <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_280px]">
+            <div className="rounded-2xl border border-[#dce6e2] bg-[#fbfcfc] p-4 sm:p-5"><label className="text-sm font-semibold">Subject<input value={refundDraft.subject} onChange={(event) => setRefundDraft({ ...refundDraft, subject: event.target.value })} className="mt-2 h-11 w-full rounded-xl border border-[#d7e2de] bg-white px-3 font-normal outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label><label className="mt-4 block text-sm font-semibold">Message<textarea value={refundDraft.body} onChange={(event) => setRefundDraft({ ...refundDraft, body: event.target.value })} rows={12} className="mt-2 w-full resize-y rounded-xl border border-[#d7e2de] bg-white p-3 font-normal leading-6 outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label><div className="mt-4 flex flex-wrap gap-2"><Button onClick={copyDraft} className="bg-[#0b6b53] hover:bg-[#095d49]"><Copy className="mr-1 size-4" />{copied ? "Copied" : "Copy request"}</Button><Button variant="outline" disabled={savingDraft} onClick={saveDraft}>{savingDraft ? "Saving…" : "Save changes"}</Button>{routeActionUrl && <Button variant="outline" asChild><a href={routeActionUrl} target="_blank" rel="noopener noreferrer">Open support page<ExternalLink className="ml-1 size-4" /></a></Button>}</div></div>
+            <aside className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><h3 className="font-semibold text-[#155c49]">How to use it</h3><p className="mt-3 text-sm leading-6 text-[#557068]">{refundDraft.route_summary || `This draft is prepared for the ${caseRecord.route.replaceAll("_", " ")} route.`}</p><p className="mt-3 text-sm leading-6 text-[#557068]">{refundDraft.next_step || "Copy the request and submit it through the company’s official support channel."}</p><p className="mt-4 border-t border-[#cce0d8] pt-4 text-xs leading-5 text-[#60756e]">Review every detail before sending. RefundRoute saves a private draft but does not send it automatically.</p></aside>
+          </div> : <div className="mt-6 rounded-2xl border border-dashed border-[#b9cdc6] bg-[#f6faf8] px-5 py-8 text-center"><FileText className="mx-auto size-7 text-[#0b755a]" /><p className="mt-3 font-semibold">Your confirmed facts are ready</p><p className="mt-1 text-sm text-[#71817c]">Generate a professional request without adding unsupported claims.</p></div>}
+        </section>}
       </>}
     </div>
   </main>;
