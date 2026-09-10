@@ -1,6 +1,6 @@
-# RefundRoute
+# MyResolveCenter
 
-RefundRoute helps people identify unexpected subscription and digital-purchase charges, assess their evidence, and follow the appropriate company-specific refund process without connecting a bank account.
+MyResolveCenter helps people identify unexpected subscription and digital-purchase charges, assess their evidence, and follow the appropriate company-specific refund process without connecting a bank account.
 
 ## MVP foundation
 
