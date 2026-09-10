@@ -174,7 +174,35 @@ export default function Home() {
 
       <section id="supported" className="py-16 sm:py-20"><div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[.8fr_1.2fr] lg:items-center"><div><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Verified playbooks</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Built around how companies actually handle refunds.</h2><p className="mt-5 leading-7 text-[#5b6d67]">MyResolveCenter distinguishes the company providing the service from the platform that processed the payment, then directs you to the appropriate process.</p></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{[{name:"Apple",slug:"apple"},{name:"Google Play",slug:"google-play"},{name:"Adobe",slug:"adobe"},{name:"Canva",slug:"canva"},{name:"Microsoft",slug:"microsoft"}].map((company)=><a key={company.slug} href={`/refunds/${company.slug}`} className="group flex items-center justify-center gap-2 rounded-2xl border border-[#dce6e2] bg-white px-4 py-6 text-center font-semibold shadow-sm transition hover:-translate-y-0.5 hover:border-[#8db5a7] hover:shadow-md">{company.name}<ArrowRight className="size-4 text-[#0b8062] transition group-hover:translate-x-0.5" /></a>)}<div className="rounded-2xl border border-dashed border-[#cbd8d3] bg-[#f6f9f8] px-4 py-6 text-center font-semibold text-[#667871]">More coming</div></div></div></section>
 
-      <section id="pricing" className="bg-[#102d25] py-16 text-white sm:py-20"><div className="mx-auto flex max-w-5xl flex-col items-center px-5 text-center sm:px-8"><p className="text-sm font-bold uppercase tracking-[.13em] text-[#8de0c6]">Simple pricing</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Check for free. Pay once when you’re ready.</h2><div className="mt-9 grid w-full gap-4 text-left md:grid-cols-2"><div className="rounded-2xl border border-white/15 bg-white/5 p-6"><p className="text-sm font-semibold text-[#a8c6bd]">Initial assessment</p><p className="mt-2 text-4xl font-semibold">Free</p><p className="mt-4 leading-6 text-[#b8cbc5]">Identify the route, urgency and missing evidence before deciding to continue.</p></div><div className="rounded-2xl border border-[#71d3b6]/50 bg-[#174538] p-6 shadow-xl"><div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-[#9ee5cf]">Guided recovery case</p><p className="mt-2 text-4xl font-semibold">$9 <span className="text-base font-normal text-[#b8d5cc]">once</span></p></div><span className="rounded-full bg-[#8de0c6] px-3 py-1 text-xs font-bold text-[#10362b]">No subscription</span></div><p className="mt-4 leading-6 text-[#c5ddd6]">Personalized request, evidence checklist, reply analysis, deadlines and follow-up tracking.</p><a href="#top" className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-[#8de0c6] px-5 text-sm font-bold text-[#10362b] transition hover:bg-white">Start free assessment</a><p className="mt-3 text-xs leading-5 text-[#a9c9bf]">PayPal checkout appears inside your case after the assessment.</p></div></div><p className="mt-7 max-w-2xl text-sm leading-6 text-[#9fb8b0]">MyResolveCenter provides guidance and document-preparation tools. It does not guarantee a refund or provide legal representation.</p></div></section>
+      <section id="pricing" className="bg-[#102d25] py-16 text-white sm:py-20">
+        <div className="mx-auto flex max-w-5xl flex-col items-center px-5 text-center sm:px-8">
+          <p className="text-sm font-bold uppercase tracking-[.13em] text-[#8de0c6]">Simple pricing</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Check for free. Pay once when you’re ready.</h2>
+          <div className="mt-9 grid w-full gap-4 text-left md:grid-cols-2 md:items-start">
+            <div className="rounded-2xl border border-white/15 bg-white/5 p-6">
+              <p className="text-sm font-semibold text-[#a8c6bd]">Initial assessment</p>
+              <p className="mt-2 text-4xl font-semibold">Free</p>
+              <p className="mt-4 leading-6 text-[#b8cbc5]">Find the likely payment route and understand what evidence your case still needs.</p>
+              <ul className="mt-5 space-y-3 text-sm text-[#c5d8d2]">
+                {["Identify the merchant and payment route", "Upload and review transaction evidence", "Receive an evidence-strength score"].map(item => <li key={item} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-[#8de0c6]" />{item}</li>)}
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-[#71d3b6]/50 bg-[#174538] p-6 shadow-xl">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-semibold text-[#9ee5cf]">Guided recovery case</p><p className="mt-2 text-4xl font-semibold">$9 <span className="text-base font-normal text-[#b8d5cc]">once</span></p></div><span className="rounded-full bg-[#8de0c6] px-3 py-1 text-xs font-bold text-[#10362b]">No subscription</span></div>
+              <p className="mt-4 leading-6 text-[#c5ddd6]">One payment unlocks the guided tools for one recovery case.</p>
+              <details className="group mt-5 rounded-xl border border-white/15 bg-black/10 open:bg-black/15">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 font-semibold text-[#e5f4ef]">See everything included <span className="text-xl leading-none transition group-open:rotate-45">+</span></summary>
+                <ul className="space-y-3 border-t border-white/10 px-4 py-4 text-sm leading-6 text-[#c5ddd6]">
+                  {["A personalized refund request based on confirmed case facts", "An editable draft you can save and copy", "Company-specific submission guidance and official support link", "Your private case record and supporting evidence in one place"].map(item => <li key={item} className="flex gap-2"><Check className="mt-1 size-4 shrink-0 text-[#8de0c6]" />{item}</li>)}
+                </ul>
+              </details>
+              <a href="#top" className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-[#8de0c6] px-5 text-sm font-bold text-[#10362b] transition hover:bg-white">Start free assessment <ArrowRight className="ml-2 size-4" /></a>
+              <p className="mt-3 text-xs leading-5 text-[#a9c9bf]">You pay only after seeing your free assessment. No percentage is taken from your refund.</p>
+            </div>
+          </div>
+          <p className="mt-7 max-w-2xl text-sm leading-6 text-[#9fb8b0]">MyResolveCenter provides guidance and document-preparation tools. It does not guarantee a refund or provide legal representation.</p>
+        </div>
+      </section>
       <footer className="border-t border-[#dce5e1] bg-white py-8"><div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 text-sm text-[#65756f] sm:flex-row sm:items-center sm:justify-between sm:px-8"><p>© 2026 MyResolveCenter. A product by Elegant Empire AI.</p><div className="flex gap-5"><a href="/privacy" className="hover:text-[#0b6b53]">Privacy</a><a href="/terms" className="hover:text-[#0b6b53]">Terms</a><a href="mailto:contact@myresolvecenter.com" className="hover:text-[#0b6b53]">Support</a></div></div></footer>
     </main>
   );
