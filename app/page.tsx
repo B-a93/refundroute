@@ -130,7 +130,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="relative rounded-[28px] border border-[#d7e2de] bg-white p-5 shadow-[0_30px_80px_rgba(24,57,48,.12)] sm:p-8">
+          <div id="assessment" className="relative scroll-mt-24 rounded-[28px] border border-[#d7e2de] bg-white p-5 shadow-[0_30px_80px_rgba(24,57,48,.12)] sm:p-8">
             <div className="mb-7 flex items-start justify-between gap-4">
               <div><p className="text-sm font-semibold uppercase tracking-[.13em] text-[#0b8062]">Free assessment</p><h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">Check my charge</h2><p className="mt-2 text-sm leading-6 text-[#64746f]">Enter the details you know. You can add evidence in the next step.</p></div>
               <span className="hidden rounded-full bg-[#eef7f4] px-3 py-1.5 text-xs font-semibold text-[#32705e] sm:block">{databaseConnected ? `${merchants.length - 1} verified routes` : "About 2 min"}</span>
@@ -196,7 +196,7 @@ export default function Home() {
                   {["A personalized refund request based on confirmed case facts", "An editable draft you can save and copy", "Company-specific submission guidance and official support link", "Your private case record and supporting evidence in one place"].map(item => <li key={item} className="flex gap-2"><Check className="mt-1 size-4 shrink-0 text-[#8de0c6]" />{item}</li>)}
                 </ul>
               </details>
-              <a href="#top" className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-[#8de0c6] px-5 text-sm font-bold text-[#10362b] transition hover:bg-white">Start free assessment <ArrowRight className="ml-2 size-4" /></a>
+              <a href="#assessment" className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-[#8de0c6] px-5 text-sm font-bold text-[#10362b] transition hover:bg-white">Start free assessment <ArrowRight className="ml-2 size-4" /></a>
               <p className="mt-3 text-xs leading-5 text-[#a9c9bf]">You pay only after seeing your free assessment. No percentage is taken from your refund.</p>
             </div>
           </div>
