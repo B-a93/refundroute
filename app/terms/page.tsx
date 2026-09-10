@@ -1,0 +1,19 @@
+import type { Metadata } from "next";
+import { LegalPage } from "@/components/legal-page";
+
+export const metadata: Metadata = { title: "Terms of Service | MyResolveCenter", description: "Terms governing access to and use of MyResolveCenter.", alternates: { canonical: "/terms" } };
+
+export default function TermsPage() {
+  return <LegalPage title="Terms of Service" intro="These terms govern your use of MyResolveCenter. By creating an account or using the service, you agree to them.">
+    <section><h2>What the service provides</h2><p>MyResolveCenter helps users organize evidence, identify possible refund routes, prepare messages and track recovery cases involving online subscriptions and purchases.</p></section>
+    <section><h2>Not legal or financial representation</h2><p>MyResolveCenter provides information and document-preparation tools. It is not a law firm, bank, card issuer, government authority or representative of the companies shown on the website. We do not provide legal advice or guarantee eligibility, acceptance, cancellation, compensation or a refund.</p></section>
+    <section><h2>Your responsibilities</h2><ul><li>Provide accurate information and review all extracted details and generated messages.</li><li>Use only evidence that you are entitled to possess and share.</li><li>Do not submit false, misleading, abusive or fraudulent claims.</li><li>Verify deadlines, policies and recipient details before taking action.</li><li>Keep your account credentials secure and notify us of suspected unauthorized access.</li></ul></section>
+    <section><h2>Company policies and third-party services</h2><p>Refund eligibility and procedures are controlled by the merchant, payment platform, financial provider and applicable law. Policies can change and may vary by country, product and payment route. Links to external services are provided for convenience; those services have their own terms and privacy policies.</p></section>
+    <section><h2>AI-generated results</h2><p>AI can misread evidence or produce incomplete or incorrect text. Generated content is a draft, not an automatic decision or instruction. You remain responsible for checking it before submission.</p></section>
+    <section><h2>Payments</h2><p>Free and paid features are described on the website or at checkout. Any price, included service and applicable refund terms will be shown before payment. Nothing in these terms limits consumer rights that cannot lawfully be excluded.</p></section>
+    <section><h2>Acceptable use</h2><p>You may not use the service to impersonate another person, harass a recipient, submit unlawful claims, distribute malware, interfere with service security or attempt unauthorized access to accounts or data. We may restrict access where reasonably necessary to protect users or the service.</p></section>
+    <section><h2>Availability and liability</h2><p>We aim to keep the service accurate and available, but it may occasionally be interrupted, delayed or contain errors. To the extent permitted by applicable law, MyResolveCenter is not responsible for decisions made by merchants or payment providers, missed third-party deadlines, or losses caused by information you supplied incorrectly. Rights that cannot legally be limited remain unaffected.</p></section>
+    <section><h2>Ending use</h2><p>You may stop using the service at any time and request account or data deletion. We may suspend or end access for serious or repeated violations of these terms, subject to applicable law.</p></section>
+    <section><h2>Contact and disputes</h2><p>Please contact <a className="font-semibold text-[#0b6b53] underline" href="mailto:contact@myresolvecenter.com">contact@myresolvecenter.com</a> first so we can try to resolve a concern. These terms are governed by applicable laws and do not remove mandatory rights available where you live.</p></section>
+  </LegalPage>;
+}
