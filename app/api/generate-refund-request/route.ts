@@ -41,10 +41,11 @@ export async function POST(request: NextRequest) {
       throw new Error("Confirm the merchant, amount, currency and charge date before generating a request.");
     }
 
-    const [{ data: company }, { data: extractedFields }, { data: evidenceItems }] = await Promise.all([
+    const [{ data: company }, { data: profile }, { data: extractedFields }, { data: evidenceItems }] = await Promise.all([
       caseRecord.company_id
         ? supabase.from("companies").select("name,support_url").eq("id", caseRecord.company_id).maybeSingle()
         : Promise.resolve({ data: null }),
+      supabase.from("profiles").select("display_name").eq("id", userData.user.id).maybeSingle(),
       supabase.from("extracted_fields").select("field_name,confirmed_value").eq("case_id", caseRecord.id).not("confirmed_at", "is", null),
       supabase.from("evidence_items").select("label,status").eq("case_id", caseRecord.id),
     ]);
@@ -66,7 +67,9 @@ export async function POST(request: NextRequest) {
           "Do not threaten, guarantee a refund, or claim legal entitlement. Ask the recipient to confirm the outcome in writing.",
           "The body should be approximately 150 to 250 words and ready for the customer to review and send.",
           "For an Apple route, address the request to Apple and say it concerns an App Store purchase. For Google Play, address Google Play. For a direct route, address the merchant.",
-          "For unknown, card, PayPal, carrier, or reseller routes, make the first request to the named merchant without asserting that it is the final escalation channel.",
+          "If the problem is unrecognized_purchase, write an unrecognized transaction investigation and dispute request for the payment provider, not a normal merchant refund request. Ask them to identify the merchant, prevent further charges, investigate the transaction, and refund it if confirmed unauthorized. Refer to uploaded proof as transaction evidence or a transaction screenshot, never as proof of purchase. Advise the customer separately to contact their bank or payment provider promptly and secure the affected account.",
+          "For other problems using unknown, card, PayPal, carrier, or reseller routes, make the first request to the named merchant without asserting that it is the final escalation channel.",
+          "End with the supplied customer name when present. If it is absent, omit the name completely; never output brackets or placeholder text.",
         ].join(" "),
         input: JSON.stringify({
           merchant: company?.name ?? caseRecord.merchant_name,
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest) {
           charge_date: caseRecord.charge_date,
           confirmed_transaction_reference: confirmed.transaction_reference ?? null,
           available_evidence: availableEvidence,
+          customer_name: profile?.display_name?.trim() || null,
         }),
         text: { format: { type: "json_schema", name: "refund_request", strict: true, schema: {
           type: "object",
