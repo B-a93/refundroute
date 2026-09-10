@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { useParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Download, FileSearch, FileText, LoaderCircle, LockKeyhole, Route, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase/client";
@@ -31,7 +32,9 @@ type ExtractedField = { id: string; document_id: string; field_name: string; fie
 const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const maxSize = 10 * 1024 * 1024;
 
-export default function CasePage({ params }: { params: { id: string } }) {
+export default function CasePage() {
+  const params = useParams<{ id: string }>();
+  const caseId = params.id;
   const [user, setUser] = useState<User | null>(null);
   const [caseRecord, setCaseRecord] = useState<CaseRecord | null>(null);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
@@ -49,9 +52,9 @@ export default function CasePage({ params }: { params: { id: string } }) {
     setUser(sessionData.session.user);
 
     const [{ data: caseData, error: caseError }, { data: documentData, error: documentError }, { data: fieldData }] = await Promise.all([
-      supabase.from("cases").select("id,merchant_name,problem,status,amount,currency,charge_date").eq("id", params.id).single(),
-      supabase.from("documents").select("id,original_filename,content_type,size_bytes,object_path,processing_status,created_at").eq("case_id", params.id).order("created_at", { ascending: false }),
-      supabase.from("extracted_fields").select("id,document_id,field_name,field_value,confidence").eq("case_id", params.id).order("created_at"),
+      supabase.from("cases").select("id,merchant_name,problem,status,amount,currency,charge_date").eq("id", caseId).single(),
+      supabase.from("documents").select("id,original_filename,content_type,size_bytes,object_path,processing_status,created_at").eq("case_id", caseId).order("created_at", { ascending: false }),
+      supabase.from("extracted_fields").select("id,document_id,field_name,field_value,confidence").eq("case_id", caseId).order("created_at"),
     ]);
     if (caseError) setError(caseError.code === "PGRST116" ? "This case does not exist or you do not have access to it." : caseError.message);
     else setCaseRecord(caseData as CaseRecord);
@@ -59,7 +62,7 @@ export default function CasePage({ params }: { params: { id: string } }) {
     setDocuments((documentData as DocumentRecord[] | null) ?? []);
     setExtractedFields((fieldData as ExtractedField[] | null) ?? []);
     setLoading(false);
-  }, [params.id]);
+  }, [caseId]);
 
   useEffect(() => { void loadCase(); }, [loadCase]);
 
