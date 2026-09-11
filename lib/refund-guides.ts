@@ -10,6 +10,7 @@ export type RefundGuide = {
   actionUrl: string;
   sourceLabel: string;
   sourceUrl: string;
+  updatedAt: string;
 };
 
 export const refundGuides: RefundGuide[] = [
@@ -25,6 +26,7 @@ export const refundGuides: RefundGuide[] = [
     actionUrl: "https://reportaproblem.apple.com/",
     sourceLabel: "Apple’s official refund guidance",
     sourceUrl: "https://support.apple.com/en-us/118223",
+    updatedAt: "2026-09-10",
   },
   {
     slug: "google-play",
@@ -38,6 +40,7 @@ export const refundGuides: RefundGuide[] = [
     actionUrl: "https://support.google.com/googleplay/workflow/9813244?hl=en",
     sourceLabel: "Google Play’s official refund guidance",
     sourceUrl: "https://support.google.com/googleplay/answer/15574897?hl=en",
+    updatedAt: "2026-09-10",
   },
   {
     slug: "adobe",
@@ -51,6 +54,7 @@ export const refundGuides: RefundGuide[] = [
     actionUrl: "https://account.adobe.com/plans",
     sourceLabel: "Adobe’s official cancellation guidance",
     sourceUrl: "https://helpx.adobe.com/account/individual/subscriptions-and-plans/renewals-and-cancellations/cancel-adobe-subscription.html",
+    updatedAt: "2026-09-10",
   },
   {
     slug: "canva",
@@ -64,6 +68,7 @@ export const refundGuides: RefundGuide[] = [
     actionUrl: "https://www.canva.com/help/contact-us/",
     sourceLabel: "Canva Help Center",
     sourceUrl: "https://www.canva.com/help/",
+    updatedAt: "2026-09-10",
   },
   {
     slug: "microsoft",
@@ -77,6 +82,7 @@ export const refundGuides: RefundGuide[] = [
     actionUrl: "https://account.microsoft.com/billing/orders",
     sourceLabel: "Microsoft’s official refund guidance",
     sourceUrl: "https://support.microsoft.com/en-us/accounts-billing/subscriptions/get-a-refund-for-apps-and-games-purchased-from-microsoft-store",
+    updatedAt: "2026-09-10",
   },
 ];
 
