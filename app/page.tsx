@@ -111,7 +111,8 @@ export default function Home() {
           </a>
           <nav className="hidden items-center gap-7 text-sm text-[#53645f] md:flex" aria-label="Main navigation">
             <a className="transition hover:text-[#0b6b53]" href="#how-it-works">How it works</a>
-            <a className="transition hover:text-[#0b6b53]" href="#supported">Supported companies</a>
+            <a className="transition hover:text-[#0b6b53]" href="/refunds">Company guides</a>
+            <a className="transition hover:text-[#0b6b53]" href="/guides">Refund help</a>
             <a className="transition hover:text-[#0b6b53]" href="#pricing">Pricing</a>
           </nav>
           <Button asChild variant="outline" className="rounded-full border-[#cbd8d3] bg-white px-5 text-[#26453d]"><a href="/auth">Sign in</a></Button>
@@ -167,6 +168,8 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="border-y border-[#dfe8e4] bg-white py-16 sm:py-20"><div className="mx-auto max-w-7xl px-5 sm:px-8"><div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div className="max-w-2xl"><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Refund help by problem</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Start with what happened.</h2><p className="mt-4 leading-7 text-[#5b6d67]">Use a practical guide to understand the evidence and route before submitting your request.</p></div><a href="/guides" className="inline-flex items-center gap-2 font-semibold text-[#0b6b53]">View all refund guides <ArrowRight className="size-4" /></a></div><div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[{label:"Unexpected subscription renewal",slug:"unexpected-subscription-renewal-refund"},{label:"Charged after cancellation",slug:"charged-after-cancellation"},{label:"Free trial became paid",slug:"free-trial-became-paid"},{label:"Unrecognized online purchase",slug:"unrecognized-online-purchase"},{label:"Promised refund not received",slug:"refund-promised-not-received"}].map((guide)=><a key={guide.slug} href={`/guides/${guide.slug}`} className="group flex items-center justify-between rounded-2xl border border-[#dce6e2] bg-[#fbfcfc] px-5 py-5 font-semibold transition hover:border-[#8db5a7] hover:bg-white">{guide.label}<ArrowRight className="size-4 shrink-0 text-[#0b8062] transition group-hover:translate-x-1" /></a>)}</div></div></section>
+
       <section id="how-it-works" className="border-y border-[#dfe8e4] bg-white py-16 sm:py-20"><div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="max-w-2xl"><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">One clear recovery journey</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Know what to do next—not just what to write.</h2></div>
         <div className="mt-10 grid gap-4 md:grid-cols-4">{[[ReceiptText,"Identify the charge","Confirm the merchant, payment route, amount and relevant dates."],[FileSearch,"Check your evidence","See what strengthens the case and what information is still missing."],[Route,"Follow the right route","Use the verified company process instead of searching across support pages."],[Sparkles,"Track every next step","Prepare follow-ups, understand replies and watch important deadlines."]].map(([Icon,title,copy],index) => { const I = Icon as typeof ReceiptText; return <article key={title as string} className="rounded-2xl border border-[#dfe7e4] bg-[#fbfcfc] p-5"><div className="flex items-center justify-between"><span className="grid size-10 place-items-center rounded-xl bg-[#e7f5f0] text-[#0b755a]"><I className="size-5" /></span><span className="text-sm font-semibold text-[#a3b0ac]">0{index+1}</span></div><h3 className="mt-5 text-lg font-semibold">{title as string}</h3><p className="mt-2 text-sm leading-6 text-[#60716b]">{copy as string}</p></article>})}</div>
@@ -203,7 +206,7 @@ export default function Home() {
           <p className="mt-7 max-w-2xl text-sm leading-6 text-[#9fb8b0]">MyResolveCenter provides guidance and document-preparation tools. It does not guarantee a refund or provide legal representation.</p>
         </div>
       </section>
-      <footer className="border-t border-[#dce5e1] bg-white py-8"><div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 text-sm text-[#65756f] sm:flex-row sm:items-center sm:justify-between sm:px-8"><p>© 2026 MyResolveCenter. A product by Elegant Empire AI.</p><div className="flex gap-5"><a href="/privacy" className="hover:text-[#0b6b53]">Privacy</a><a href="/terms" className="hover:text-[#0b6b53]">Terms</a><a href="mailto:contact@myresolvecenter.com" className="hover:text-[#0b6b53]">Support</a></div></div></footer>
+      <footer className="border-t border-[#dce5e1] bg-white py-8"><div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 text-sm text-[#65756f] sm:flex-row sm:items-center sm:justify-between sm:px-8"><p>© 2026 MyResolveCenter. A product by Elegant Empire AI.</p><div className="flex flex-wrap gap-5"><a href="/guides" className="hover:text-[#0b6b53]">Refund guides</a><a href="/refunds" className="hover:text-[#0b6b53]">Company guides</a><a href="/privacy" className="hover:text-[#0b6b53]">Privacy</a><a href="/terms" className="hover:text-[#0b6b53]">Terms</a><a href="mailto:contact@myresolvecenter.com" className="hover:text-[#0b6b53]">Support</a></div></div></footer>
     </main>
   );
 }
