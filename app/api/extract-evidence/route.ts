@@ -41,12 +41,14 @@ export async function POST(request: NextRequest) {
         model: process.env.OPENAI_EXTRACTION_MODEL ?? "gpt-4.1-mini",
         store: false,
         input: [{ role: "user", content: [
-          { type: "input_text", text: "Read this purchase evidence. Extract only details visibly supported by the document. Use null when unknown. Dates must be YYYY-MM-DD and currency must be a three-letter ISO code." },
+          { type: "input_text", text: "Classify and read this evidence. Transaction evidence visibly shows a purchase, charge, receipt, invoice, order, subscription, merchant, amount, transaction reference or payment record. Supporting evidence includes a cancellation confirmation, seller response, delivery record or item-condition proof. Mark unrelated for personal photos, greeting or planning cards, and files with no visible connection to a purchase or recovery case. Extract only details visibly supported by this single document. Never infer transaction details from decorative or unrelated content. Use null when unknown. Dates must be YYYY-MM-DD and currency must be a three-letter ISO code." },
           mediaInput,
         ] }],
         text: { format: { type: "json_schema", name: "receipt_extraction", strict: true, schema: {
           type: "object",
           properties: {
+            document_relevance: { type: "string", enum: ["transaction_evidence", "supporting_evidence", "unrelated"] },
+            relevance_reason: { type: "string" },
             merchant_name: { type: ["string", "null"] },
             amount: { type: ["string", "null"] },
             currency: { type: ["string", "null"] },
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
             product_name: { type: ["string", "null"] },
             confidence: { type: "number", minimum: 0, maximum: 1 },
           },
-          required: ["merchant_name", "amount", "currency", "charge_date", "transaction_reference", "product_name", "confidence"],
+          required: ["document_relevance", "relevance_reason", "merchant_name", "amount", "currency", "charge_date", "transaction_reference", "product_name", "confidence"],
           additionalProperties: false,
         } } },
       }),
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
     const extracted = JSON.parse(outputText) as Record<string, string | number | null>;
 
     await supabase.from("extracted_fields").delete().eq("document_id", document.id);
-    const rows = ["merchant_name", "amount", "currency", "charge_date", "transaction_reference", "product_name"].map((fieldName) => ({
+    const rows = ["document_relevance", "relevance_reason", "merchant_name", "amount", "currency", "charge_date", "transaction_reference", "product_name"].map((fieldName) => ({
       document_id: document.id,
       case_id: document.case_id,
       user_id: userData.user.id,
@@ -82,7 +84,7 @@ export async function POST(request: NextRequest) {
     if (fieldsError) throw fieldsError;
     await supabase.from("documents").update({ processing_status: "completed" }).eq("id", document.id);
     await supabase.from("case_events").insert({ case_id: document.case_id, user_id: userData.user.id, event_type: "evidence_extracted", title: "Evidence details extracted", details: { document_id: document.id } });
-    return NextResponse.json({ fields: rows });
+    return NextResponse.json({ fields: rows, relevance: extracted.document_relevance, relevance_reason: extracted.relevance_reason });
   } catch (error) {
     if (supabase && documentId) await supabase.from("documents").update({ processing_status: "failed" }).eq("id", documentId);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Extraction failed." }, { status: 400 });
