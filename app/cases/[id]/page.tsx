@@ -35,6 +35,7 @@ type DocumentRecord = {
 };
 
 type ExtractedField = { id: string; document_id: string; field_name: string; field_value: string | null; confidence: number | null };
+type ExtractionResult = { relevance?: "transaction_evidence" | "supporting_evidence" | "unrelated"; relevance_reason?: string };
 type EvidenceItem = { id: string; evidence_type: string; label: string; status: "missing" | "available" | "required" | "not_applicable"; importance: number; document_id: string | null };
 type RefundDraft = { id: string; subject: string; body: string; route_summary?: string; next_step?: string; support_url?: string | null };
 
@@ -57,6 +58,7 @@ export default function CasePage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [reviewValues, setReviewValues] = useState<ReviewValues>(emptyReview);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("proof_of_purchase");
   const [refundDraft, setRefundDraft] = useState<RefundDraft | null>(null);
@@ -98,8 +100,12 @@ export default function CasePage() {
   useEffect(() => {
     if (!caseRecord) return;
     const values = { ...emptyReview };
-    const extractedDocumentIds = [...new Set(extractedFields.map((field) => field.document_id))];
-    const fieldsToUse = extractedDocumentIds.length === 1 ? extractedFields : [];
+    const relevantFields = extractedFields.filter((field) => field.field_name === "document_relevance" && field.field_value === "transaction_evidence");
+    const extractedDocumentIds = relevantFields.map((field) => field.document_id);
+    const activeDocumentId = selectedDocumentId && extractedDocumentIds.includes(selectedDocumentId)
+      ? selectedDocumentId
+      : extractedDocumentIds.length === 1 ? extractedDocumentIds[0] : null;
+    const fieldsToUse = activeDocumentId ? extractedFields.filter((field) => field.document_id === activeDocumentId) : [];
     for (const field of fieldsToUse) {
       if (reviewFieldNames.includes(field.field_name as keyof ReviewValues) && field.field_value) values[field.field_name as keyof ReviewValues] = field.field_value;
     }
@@ -108,9 +114,10 @@ export default function CasePage() {
     values.currency ||= caseRecord.currency ?? "";
     values.charge_date ||= caseRecord.charge_date ?? "";
     setReviewValues(values);
-  }, [caseRecord, extractedFields]);
+    if (activeDocumentId !== selectedDocumentId) setSelectedDocumentId(activeDocumentId);
+  }, [caseRecord, extractedFields, selectedDocumentId]);
 
-  async function requestExtraction(documentId: string) {
+  async function requestExtraction(documentId: string): Promise<ExtractionResult> {
     if (!supabase) throw new Error("Automatic reading is unavailable.");
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) throw new Error("Sign in again to read this document.");
@@ -119,8 +126,9 @@ export default function CasePage() {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
       body: JSON.stringify({ document_id: documentId }),
     });
-    const result = await response.json().catch(() => ({})) as { error?: string };
+    const result = await response.json().catch(() => ({})) as ExtractionResult & { error?: string };
     if (!response.ok) throw new Error(result.error || "Automatic reading failed.");
+    return result;
   }
 
   async function uploadEvidence(event: ChangeEvent<HTMLInputElement>) {
@@ -155,8 +163,17 @@ export default function CasePage() {
       await supabase.from("evidence_items").upsert({ case_id: caseRecord.id, user_id: user.id, evidence_type: uploadCategory, label: uploadCategory.replaceAll("_", " "), status: "available", document_id: savedDocument.id, importance: uploadCategory === "proof_of_purchase" ? 3 : 2 }, { onConflict: "case_id,evidence_type" });
       if (uploadCategory === "proof_of_purchase" || uploadCategory === "transaction_reference") {
         setSuccess("Evidence uploaded securely. Reading its details…");
-        try { await requestExtraction(savedDocument.id); setSuccess("Evidence uploaded and details extracted."); }
-        catch { setSuccess("Evidence uploaded. Select Read details after automatic reading is configured."); }
+        try {
+          const result = await requestExtraction(savedDocument.id);
+          if (result.relevance === "transaction_evidence") {
+            setSelectedDocumentId(savedDocument.id);
+            setSuccess("Evidence uploaded and selected as the transaction record.");
+          } else {
+            await supabase.from("evidence_items").update({ status: "missing", document_id: null }).eq("case_id", caseRecord.id).eq("document_id", savedDocument.id);
+            setSuccess(result.relevance === "unrelated" ? "File uploaded, but it does not appear to contain transaction evidence and will not affect this case." : "Supporting evidence uploaded. It will not replace the transaction details.");
+          }
+        }
+        catch (extractionError) { setError(extractionError instanceof Error ? extractionError.message : "The file was uploaded, but automatic reading failed."); setSuccess("Evidence uploaded securely."); }
       } else setSuccess("Supporting evidence uploaded securely.");
       await loadCase();
       await recalculateStrength();
@@ -169,8 +186,13 @@ export default function CasePage() {
     if (!supabase) return;
     setError(""); setSuccess(""); setUploading(true);
     try {
-      await requestExtraction(documentId);
-      setSuccess("Document details extracted.");
+      const result = await requestExtraction(documentId);
+      if (result.relevance === "transaction_evidence") {
+        setSelectedDocumentId(documentId);
+        setSuccess("Transaction details extracted. Review and confirm this file below.");
+      } else {
+        setSuccess(result.relevance === "unrelated" ? "This file does not appear related to a transaction, so its details will not be used." : "Supporting evidence identified. It will not replace your transaction details.");
+      }
       await loadCase();
     } catch (extractionError) {
       setError(extractionError instanceof Error ? extractionError.message : "Automatic reading failed. Your uploaded file is safe.");
@@ -188,6 +210,11 @@ export default function CasePage() {
 
   function useDocumentDetails(documentId: string) {
     if (!caseRecord) return;
+    const relevance = extractedFields.find((field) => field.document_id === documentId && field.field_name === "document_relevance")?.field_value;
+    if (relevance !== "transaction_evidence") {
+      setError("This file is not identified as transaction evidence and cannot replace the case details.");
+      return;
+    }
     const values = { ...emptyReview };
     for (const field of extractedFields.filter((item) => item.document_id === documentId)) {
       if (reviewFieldNames.includes(field.field_name as keyof ReviewValues) && field.field_value) values[field.field_name as keyof ReviewValues] = field.field_value;
@@ -197,6 +224,7 @@ export default function CasePage() {
     values.currency ||= caseRecord.currency ?? "";
     values.charge_date ||= caseRecord.charge_date ?? "";
     setReviewValues(values);
+    setSelectedDocumentId(documentId);
     setError("");
     setSuccess("Only this file’s extracted details are now shown for review. Confirm them before continuing.");
   }
@@ -205,24 +233,30 @@ export default function CasePage() {
     if (!supabase || !caseRecord || !user) return;
     if (!window.confirm(`Remove ${document.original_filename} from this case?`)) return;
     setError(""); setSuccess("");
+    const { error: unlinkError } = await supabase.from("evidence_items").update({ status: "missing", document_id: null }).eq("case_id", caseRecord.id).eq("document_id", document.id);
+    if (unlinkError) { setError(unlinkError.message); return; }
     const { error: deleteError } = await supabase.from("documents").delete().eq("id", document.id);
     if (deleteError) { setError(deleteError.message); return; }
     await supabase.storage.from("case-evidence").remove([document.object_path]);
     await supabase.from("case_events").insert({ case_id: caseRecord.id, user_id: user.id, event_type: "evidence_removed", title: "Evidence removed", details: { filename: document.original_filename } });
+    if (selectedDocumentId === document.id) setSelectedDocumentId(null);
     setSuccess("The unrelated file was removed from this case.");
     await loadCase();
+    await recalculateStrength();
   }
 
   async function confirmDetails() {
     if (!supabase || !user || !caseRecord) return;
     const client = supabase;
     setError(""); setSuccess("");
+    if (!selectedDocumentId) { setError("Select the transaction evidence you want to use before confirming details."); return; }
     if (!reviewValues.merchant_name || Number(reviewValues.amount) <= 0 || !/^[A-Z]{3}$/.test(reviewValues.currency.toUpperCase()) || !reviewValues.charge_date) {
       setError("Confirm the merchant, amount, three-letter currency and charge date."); return;
     }
     setConfirming(true);
     try {
-      await Promise.all(extractedFields.map((field) => client.from("extracted_fields").update({ confirmed_value: reviewValues[field.field_name as keyof ReviewValues] ?? field.field_value, confirmed_at: new Date().toISOString() }).eq("id", field.id)));
+      const selectedFields = extractedFields.filter((field) => field.document_id === selectedDocumentId && reviewFieldNames.includes(field.field_name as keyof ReviewValues));
+      await Promise.all(selectedFields.map((field) => client.from("extracted_fields").update({ confirmed_value: reviewValues[field.field_name as keyof ReviewValues] ?? field.field_value, confirmed_at: new Date().toISOString() }).eq("id", field.id)));
       let score = 25;
       score += reviewValues.merchant_name ? 10 : 0;
       score += Number(reviewValues.amount) > 0 ? 10 : 0;
@@ -235,8 +269,8 @@ export default function CasePage() {
       const { error: caseError } = await client.from("cases").update({ merchant_name: reviewValues.merchant_name, amount: Number(reviewValues.amount), currency: reviewValues.currency.toUpperCase(), charge_date: reviewValues.charge_date, product_name: reviewValues.product_name || null, strength_score: score, strength_label: strengthLabel, urgency_label: "Check deadlines", status }).eq("id", caseRecord.id);
       if (caseError) throw caseError;
       const checklist = [
-        { evidence_type: "proof_of_purchase", label: "Proof of purchase", status: "available", document_id: documents[0]?.id ?? null, importance: 3 },
-        { evidence_type: "transaction_reference", label: "Transaction reference", status: reviewValues.transaction_reference ? "available" : "missing", document_id: reviewValues.transaction_reference ? documents[0]?.id ?? null : null, importance: 2 },
+        { evidence_type: "proof_of_purchase", label: "Proof of purchase", status: "available", document_id: selectedDocumentId, importance: 3 },
+        { evidence_type: "transaction_reference", label: "Transaction reference", status: reviewValues.transaction_reference ? "available" : "missing", document_id: reviewValues.transaction_reference ? selectedDocumentId : null, importance: 2 },
         { evidence_type: "seller_response", label: "Seller response", status: "missing", document_id: null, importance: 2 },
         ...(caseRecord.recovery_type === "subscription" && caseRecord.problem === "charged_after_cancellation" ? [{ evidence_type: "cancellation_confirmation", label: "Cancellation confirmation", status: "required", document_id: null, importance: 3 }] : []),
         ...(caseRecord.recovery_type === "online_purchase" && caseRecord.problem === "item_not_received" ? [{ evidence_type: "delivery_tracking", label: "Delivery or tracking evidence", status: "required", document_id: null, importance: 3 }] : []),
@@ -260,7 +294,7 @@ export default function CasePage() {
       setEvidenceItems(items);
     }
     const available = new Set(items.filter((item) => item.status === "available").map((item) => item.evidence_type));
-    let score = available.has("proof_of_purchase") || documents.length > 0 ? 25 : 0;
+    let score = available.has("proof_of_purchase") ? 25 : 0;
     score += caseRecord.merchant_name ? 10 : 0;
     score += caseRecord.amount && caseRecord.amount > 0 ? 10 : 0;
     score += caseRecord.currency ? 5 : 0;
@@ -323,6 +357,14 @@ export default function CasePage() {
     window.setTimeout(() => setCopied(false), 1800);
   }
 
+  function documentRelevance(documentId: string) {
+    return extractedFields.find((field) => field.document_id === documentId && field.field_name === "document_relevance")?.field_value;
+  }
+
+  const transactionDocumentIds = extractedFields
+    .filter((field) => field.field_name === "document_relevance" && field.field_value === "transaction_evidence")
+    .map((field) => field.document_id);
+  const selectedDocument = documents.find((document) => document.id === selectedDocumentId);
   const routeActionUrl = refundDraft?.support_url || (caseRecord?.route === "apple" ? "https://reportaproblem.apple.com/" : caseRecord?.route === "google_play" ? "https://support.google.com/googleplay/" : null);
 
   if (loading) return <main className="grid min-h-screen place-items-center bg-[#f4f8f6]"><p className="text-[#5c716a]">Opening your case…</p></main>;
@@ -339,10 +381,10 @@ export default function CasePage() {
             <button type="button" disabled={uploading} onClick={() => beginUpload("proof_of_purchase")} className="mt-6 grid w-full place-items-center rounded-2xl border-2 border-dashed border-[#b9cdc6] bg-[#f6faf8] px-5 py-10 text-center transition hover:border-[#72a18f] disabled:opacity-60"><span className="grid size-12 place-items-center rounded-2xl bg-[#e2f3ed] text-[#0b755a]"><UploadCloud className="size-6" /></span><span className="mt-4 font-semibold">{uploading ? "Uploading securely…" : "Choose evidence to upload"}</span><span className="mt-1 text-sm text-[#73837e]">JPG, PNG, WebP or PDF · maximum 10 MB</span></button>
             {error && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
             {success && <p role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><CheckCircle2 className="size-4" />{success}</p>}
-            <div className="mt-7"><h3 className="font-semibold">Uploaded files</h3>{documents.length === 0 ? <p className="mt-3 rounded-xl bg-[#f7f9f8] px-4 py-5 text-sm text-[#71817c]">No evidence uploaded yet.</p> : <div className="mt-3 divide-y">{documents.map(document => <div key={document.id} className="flex items-center justify-between gap-4 py-4"><div className="flex min-w-0 items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5f2] text-[#0b755a]"><FileText className="size-5" /></span><div className="min-w-0"><p className="truncate text-sm font-semibold">{document.original_filename}</p><p className="mt-1 text-xs text-[#75857f]">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB · <span className="capitalize">{document.processing_status}</span></p></div></div><div className="flex flex-wrap items-center justify-end"><Button variant="ghost" size="sm" disabled={uploading} onClick={() => extractDocument(document.id)}>{document.processing_status === "completed" ? "Read again" : "Read details"}</Button>{document.processing_status === "completed" && <Button variant="ghost" size="sm" onClick={() => useDocumentDetails(document.id)}>Use details</Button>}<Button variant="ghost" size="icon" onClick={() => downloadDocument(document)} aria-label={`Open ${document.original_filename}`}><Download className="size-4" /></Button><Button variant="ghost" size="icon" onClick={() => removeDocument(document)} aria-label={`Remove ${document.original_filename}`} className="text-red-600 hover:bg-red-50 hover:text-red-700"><Trash2 className="size-4" /></Button></div></div>)}</div>}</div>
+            <div className="mt-7"><h3 className="font-semibold">Uploaded files</h3>{documents.length === 0 ? <p className="mt-3 rounded-xl bg-[#f7f9f8] px-4 py-5 text-sm text-[#71817c]">No evidence uploaded yet.</p> : <div className="mt-3 divide-y">{documents.map(document => { const relevance = documentRelevance(document.id); const selected = selectedDocumentId === document.id; return <div key={document.id} className={`flex items-center justify-between gap-4 py-4 ${selected ? "rounded-xl bg-[#eef8f4] px-3" : ""}`}><div className="flex min-w-0 items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5f2] text-[#0b755a]"><FileText className="size-5" /></span><div className="min-w-0"><p className="truncate text-sm font-semibold">{document.original_filename}</p><p className="mt-1 text-xs text-[#75857f]">{(document.size_bytes / 1024 / 1024).toFixed(2)} MB · <span className="capitalize">{document.processing_status}</span>{relevance && <> · <span className={relevance === "transaction_evidence" ? "text-emerald-700" : relevance === "unrelated" ? "text-amber-700" : "text-blue-700"}>{relevance.replaceAll("_", " ")}</span></>}</p>{selected && <p className="mt-1 text-xs font-semibold text-emerald-700">Selected transaction evidence</p>}</div></div><div className="flex flex-wrap items-center justify-end"><Button variant="ghost" size="sm" disabled={uploading} onClick={() => extractDocument(document.id)}>{document.processing_status === "completed" ? "Read again" : "Read details"}</Button>{relevance === "transaction_evidence" && <Button variant={selected ? "outline" : "ghost"} size="sm" onClick={() => useDocumentDetails(document.id)}>{selected ? "Selected" : "Use details"}</Button>}<Button variant="ghost" size="icon" onClick={() => downloadDocument(document)} aria-label={`Open ${document.original_filename}`}><Download className="size-4" /></Button><Button variant="ghost" size="icon" onClick={() => removeDocument(document)} aria-label={`Remove ${document.original_filename}`} className="text-red-600 hover:bg-red-50 hover:text-red-700"><Trash2 className="size-4" /></Button></div></div>; })}</div>}</div>
             {evidenceItems.length > 0 && <div className="mt-8"><h3 className="font-semibold">Evidence checklist</h3><p className="mt-1 text-sm text-[#71817c]">Continue even if you do not have every item.</p><div className="mt-3 space-y-3">{evidenceItems.map(item => <div key={item.id} className="rounded-xl border border-[#dfe7e4] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.label}</p><p className={`mt-1 text-xs font-semibold capitalize ${item.status === "available" ? "text-emerald-700" : item.status === "not_applicable" ? "text-[#71817c]" : "text-amber-700"}`}>{item.status.replaceAll("_", " ")}</p></div>{item.status === "available" && <span className="grid size-7 place-items-center rounded-full bg-emerald-100 text-emerald-700"><Check className="size-4" /></span>}</div>{item.status !== "available" && item.status !== "not_applicable" && <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => beginUpload(item.evidence_type)} className="bg-[#0b6b53] hover:bg-[#095d49]"><UploadCloud className="mr-1.5 size-3.5" />Upload</Button><Button size="sm" variant="outline" onClick={() => setEvidenceStatus(item, "missing")}><X className="mr-1.5 size-3.5" />I don’t have this</Button><Button size="sm" variant="ghost" onClick={() => setEvidenceStatus(item, "not_applicable")}>Not applicable</Button></div>}</div>)}</div></div>}
           </section>
-          <aside className="space-y-5"><section className="rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><FileSearch className="size-4 text-[#0b755a]" />Review details</h2>{uploading && <p className="mt-4 flex items-center gap-2 text-sm text-[#667a73]"><LoaderCircle className="size-4 animate-spin" />Reading document…</p>}{extractedFields.length === 0 && !uploading ? <p className="mt-3 text-sm leading-6 text-[#71817c]">Upload evidence to automatically identify transaction details.</p> : <div className="mt-4 space-y-3">{caseRecord.charge_date && reviewValues.charge_date && caseRecord.charge_date !== reviewValues.charge_date && <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800"><AlertTriangle className="mt-0.5 size-4 shrink-0" />The extracted date differs from the date you entered. Please correct it before confirming.</p>}{reviewFieldNames.map((fieldName) => { const extracted = extractedFields.find(field => field.field_name === fieldName); return <label key={fieldName} className="block text-sm font-semibold capitalize">{fieldName.replaceAll("_", " ")} {extracted?.confidence !== null && extracted?.confidence !== undefined && <span className="float-right text-xs font-normal text-[#74857f]">{Math.round(extracted.confidence * 100)}% confidence</span>}<input type={fieldName === "charge_date" ? "date" : fieldName === "amount" ? "number" : "text"} step={fieldName === "amount" ? "0.01" : undefined} value={reviewValues[fieldName]} onChange={(event) => setReviewValues({ ...reviewValues, [fieldName]: fieldName === "currency" ? event.target.value.toUpperCase() : event.target.value })} className="mt-1.5 h-11 w-full rounded-xl border border-[#d7e2de] bg-white px-3 font-normal outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label>})}<Button disabled={confirming} onClick={confirmDetails} className="mt-2 h-11 w-full rounded-xl bg-[#0b6b53] font-semibold hover:bg-[#095d49]"><ShieldCheck className="mr-2 size-4" />{confirming ? "Confirming…" : "Confirm details and assess case"}</Button></div>}</section>{caseRecord.strength_score !== null && <section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="text-sm font-semibold text-[#557068]">Evidence strength</p><div className="mt-2 flex items-end justify-between"><p className="text-3xl font-semibold text-[#155c49]">{caseRecord.strength_score}/100</p><p className="font-semibold text-[#155c49]">{caseRecord.strength_label}</p></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-[#0b8062]" style={{ width: `${caseRecord.strength_score}%` }} /></div><p className="mt-3 text-sm leading-6 text-[#557068]">{caseRecord.recovery_type === "online_purchase" ? "Add seller messages, delivery records or item photos when relevant." : "Add cancellation proof or seller responses when relevant."}</p></section>}<section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Case details</h2><dl className="mt-4 space-y-4 text-sm"><div><dt className="text-[#788782]">Recovery type</dt><dd className="mt-1 font-semibold">{caseRecord.recovery_type === "online_purchase" ? "Online purchase" : "Online subscription"}</dd></div><div><dt className="text-[#788782]">Charge date</dt><dd className="mt-1 font-semibold">{caseRecord.charge_date ? new Date(`${caseRecord.charge_date}T00:00:00`).toLocaleDateString() : "Not provided"}</dd></div><div><dt className="text-[#788782]">Current stage</dt><dd className="mt-1 capitalize font-semibold">{caseRecord.status.replaceAll("_", " ")}</dd></div></dl></section><section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="flex items-center gap-2 font-semibold text-[#155c49]"><LockKeyhole className="size-4" />Private evidence</p><p className="mt-2 text-sm leading-6 text-[#547068]">Files are stored in a private bucket. Only your signed-in account can access this case folder.</p></section></aside>
+          <aside className="space-y-5"><section className="rounded-2xl border bg-white p-5"><h2 className="flex items-center gap-2 font-semibold"><FileSearch className="size-4 text-[#0b755a]" />Review details</h2>{uploading && <p className="mt-4 flex items-center gap-2 text-sm text-[#667a73]"><LoaderCircle className="size-4 animate-spin" />Reading document…</p>}{transactionDocumentIds.length === 0 && !uploading ? <p className="mt-3 text-sm leading-6 text-[#71817c]">Upload or read a receipt, invoice, order confirmation or transaction screenshot. Unrelated files will not be used.</p> : !selectedDocumentId ? <p className="mt-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800"><AlertTriangle className="mt-0.5 size-4 shrink-0" />Choose <strong>Use details</strong> beside the one transaction file you want to review.</p> : <div className="mt-4 space-y-3"><p className="rounded-xl bg-[#eef8f4] px-3 py-2 text-xs font-semibold text-[#155c49]">Using: {selectedDocument?.original_filename}</p>{caseRecord.charge_date && reviewValues.charge_date && caseRecord.charge_date !== reviewValues.charge_date && <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800"><AlertTriangle className="mt-0.5 size-4 shrink-0" />The extracted date differs from the date you entered. Please correct it before confirming.</p>}{reviewFieldNames.map((fieldName) => { const extracted = extractedFields.find(field => field.document_id === selectedDocumentId && field.field_name === fieldName); return <label key={fieldName} className="block text-sm font-semibold capitalize">{fieldName.replaceAll("_", " ")} {extracted?.confidence !== null && extracted?.confidence !== undefined && <span className="float-right text-xs font-normal text-[#74857f]">{Math.round(extracted.confidence * 100)}% confidence</span>}<input type={fieldName === "charge_date" ? "date" : fieldName === "amount" ? "number" : "text"} step={fieldName === "amount" ? "0.01" : undefined} value={reviewValues[fieldName]} onChange={(event) => setReviewValues({ ...reviewValues, [fieldName]: fieldName === "currency" ? event.target.value.toUpperCase() : event.target.value })} className="mt-1.5 h-11 w-full rounded-xl border border-[#d7e2de] bg-white px-3 font-normal outline-none focus:border-[#0b8062] focus:ring-2 focus:ring-[#0b8062]/10" /></label>})}<Button disabled={confirming} onClick={confirmDetails} className="mt-2 h-11 w-full rounded-xl bg-[#0b6b53] font-semibold hover:bg-[#095d49]"><ShieldCheck className="mr-2 size-4" />{confirming ? "Confirming…" : "Confirm selected details and assess"}</Button></div>}</section>{caseRecord.strength_score !== null && <section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="text-sm font-semibold text-[#557068]">Evidence strength</p><div className="mt-2 flex items-end justify-between"><p className="text-3xl font-semibold text-[#155c49]">{caseRecord.strength_score}/100</p><p className="font-semibold text-[#155c49]">{caseRecord.strength_label}</p></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-[#0b8062]" style={{ width: `${caseRecord.strength_score}%` }} /></div><p className="mt-3 text-sm leading-6 text-[#557068]">{caseRecord.recovery_type === "online_purchase" ? "Add seller messages, delivery records or item photos when relevant." : "Add cancellation proof or seller responses when relevant."}</p></section>}<section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Case details</h2><dl className="mt-4 space-y-4 text-sm"><div><dt className="text-[#788782]">Recovery type</dt><dd className="mt-1 font-semibold">{caseRecord.recovery_type === "online_purchase" ? "Online purchase" : "Online subscription"}</dd></div><div><dt className="text-[#788782]">Charge date</dt><dd className="mt-1 font-semibold">{caseRecord.charge_date ? new Date(`${caseRecord.charge_date}T00:00:00`).toLocaleDateString() : "Not provided"}</dd></div><div><dt className="text-[#788782]">Current stage</dt><dd className="mt-1 capitalize font-semibold">{caseRecord.status.replaceAll("_", " ")}</dd></div></dl></section><section className="rounded-2xl border border-[#cce0d8] bg-[#eef8f4] p-5"><p className="flex items-center gap-2 font-semibold text-[#155c49]"><LockKeyhole className="size-4" />Private evidence</p><p className="mt-2 text-sm leading-6 text-[#547068]">Files are stored in a private bucket. Only your signed-in account can access this case folder.</p></section></aside>
         </div>
         {caseRecord.strength_score !== null && caseRecord.paid_tier === "free" && <PayPalCheckout caseId={caseRecord.id} onPaid={() => { setCaseRecord({ ...caseRecord, paid_tier: "guided" }); setSuccess("Payment confirmed. Guided recovery is unlocked."); }} />}
         {caseRecord.strength_score !== null && caseRecord.paid_tier !== "free" && <section className="mt-6 rounded-2xl border bg-white p-5 sm:p-7">
