@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, LoaderCircle, LockKeyhole } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+import { REFERRAL_STORAGE_KEY } from "@/components/referral-tracker";
 
 type PayPalButtons = { render: (element: HTMLElement) => Promise<void>; close?: () => void };
 type PayPalNamespace = { Buttons: (options: Record<string, unknown>) => PayPalButtons };
@@ -13,6 +14,7 @@ export function PayPalCheckout({ caseId, onPaid }: { caseId: string; onPaid: () 
   const onPaidRef = useRef(onPaid);
   const [state, setState] = useState<"loading" | "ready" | "error" | "paid">("loading");
   const [message, setMessage] = useState("");
+  const [referral, setReferral] = useState<{ code: string; creator: string } | null>(null);
 
   useEffect(() => { onPaidRef.current = onPaid; }, [onPaid]);
 
@@ -21,6 +23,16 @@ export function PayPalCheckout({ caseId, onPaid }: { caseId: string; onPaid: () 
     let cancelled = false;
     async function setup() {
       try {
+        const savedCode = window.localStorage.getItem(REFERRAL_STORAGE_KEY);
+        let verifiedCode: string | null = null;
+        if (savedCode) {
+          const referralResponse = await fetch(`/api/referrals/validate?code=${encodeURIComponent(savedCode)}`, { cache: "no-store" });
+          const referralResult = await referralResponse.json() as { valid?: boolean; code?: string; creator?: string };
+          if (referralResult.valid && referralResult.code && referralResult.creator) {
+            verifiedCode = referralResult.code;
+            if (!cancelled) setReferral({ code: referralResult.code, creator: referralResult.creator });
+          } else window.localStorage.removeItem(REFERRAL_STORAGE_KEY);
+        }
         const configResponse = await fetch("/api/paypal/config", { cache: "no-store" });
         const config = await configResponse.json() as { clientId?: string; error?: string };
         if (!configResponse.ok || !config.clientId) throw new Error(config.error || "PayPal checkout is unavailable.");
@@ -43,7 +55,7 @@ export function PayPalCheckout({ caseId, onPaid }: { caseId: string; onPaid: () 
             if (!supabase) throw new Error("Payment service is unavailable.");
             const session = (await supabase.auth.getSession()).data.session;
             if (!session) throw new Error("Sign in again to continue.");
-            const response = await fetch("/api/paypal/create-order", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ case_id: caseId }) });
+            const response = await fetch("/api/paypal/create-order", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ case_id: caseId, referral_code: verifiedCode }) });
             const result = await response.json() as { id?: string; error?: string; alreadyPaid?: boolean };
             if (result.alreadyPaid) { onPaidRef.current(); throw new Error("This case is already unlocked."); }
             if (!response.ok || !result.id) throw new Error(result.error || "Payment could not be started.");
@@ -73,6 +85,6 @@ export function PayPalCheckout({ caseId, onPaid }: { caseId: string; onPaid: () 
   }, [caseId]);
 
   return <section className="mt-6 rounded-2xl border border-[#cce0d8] bg-[#f4faf7] p-5 sm:p-7">
-    <div className="grid gap-5 md:grid-cols-[1fr_320px] md:items-center"><div><p className="flex items-center gap-2 text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]"><LockKeyhole className="size-4" />One-time payment</p><h2 className="mt-2 text-2xl font-semibold tracking-[-.03em]">Unlock guided recovery for $9</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#5d726b]">Generate and save personalized refund requests, analyze replies, and track follow-up actions for this case. No subscription and no percentage of your refund.</p></div><div><div ref={container} className={state === "paid" ? "hidden" : "min-h-12"} />{state === "loading" && <p className="flex items-center justify-center gap-2 text-sm text-[#5d726b]"><LoaderCircle className="size-4 animate-spin" />{message || "Loading PayPal…"}</p>}{message && state !== "loading" && <p role={state === "error" ? "alert" : "status"} className={`mt-2 flex items-center gap-2 text-sm ${state === "error" ? "text-red-700" : "text-[#276b57]"}`}>{state === "paid" && <CheckCircle2 className="size-4" />}{message}</p>}</div></div>
+    <div className="grid gap-5 md:grid-cols-[1fr_320px] md:items-center"><div><p className="flex items-center gap-2 text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]"><LockKeyhole className="size-4" />One-time payment</p><h2 className="mt-2 text-2xl font-semibold tracking-[-.03em]">Unlock guided recovery for ${referral ? "8" : "9"}</h2>{referral && <p className="mt-2 inline-flex rounded-full bg-[#dff3eb] px-3 py-1 text-sm font-semibold text-[#0b6b53]">$1 creator discount applied via {referral.creator}</p>}<p className="mt-2 max-w-xl text-sm leading-6 text-[#5d726b]">Generate and save personalized refund requests, analyze replies, and track follow-up actions for this case. No subscription and no percentage of your refund.</p></div><div><div ref={container} className={state === "paid" ? "hidden" : "min-h-12"} />{state === "loading" && <p className="flex items-center justify-center gap-2 text-sm text-[#5d726b]"><LoaderCircle className="size-4 animate-spin" />{message || "Loading PayPal…"}</p>}{message && state !== "loading" && <p role={state === "error" ? "alert" : "status"} className={`mt-2 flex items-center gap-2 text-sm ${state === "error" ? "text-red-700" : "text-[#276b57]"}`}>{state === "paid" && <CheckCircle2 className="size-4" />}{message}</p>}</div></div>
   </section>;
 }
