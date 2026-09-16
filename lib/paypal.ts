@@ -1,4 +1,5 @@
 const GUIDED_PRICE = "9.00";
+const CREATOR_PRICE = "8.00";
 const GUIDED_CURRENCY = "USD";
 
 export const guidedProduct = {
@@ -6,6 +7,17 @@ export const guidedProduct = {
   currency: GUIDED_CURRENCY,
   name: "MyResolveCenter guided recovery case",
 };
+
+export const creatorOffer = {
+  amount: CREATOR_PRICE,
+  commission: "2.00",
+  currency: GUIDED_CURRENCY,
+};
+
+export function normalizeReferralCode(value?: string | null) {
+  const code = value?.trim().toUpperCase();
+  return code && /^[A-Z0-9_-]{3,32}$/.test(code) ? code : null;
+}
 
 export function paypalBaseUrl() {
   return process.env.PAYPAL_ENV === "live"
