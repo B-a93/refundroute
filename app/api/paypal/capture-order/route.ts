@@ -29,6 +29,10 @@ export async function POST(request: NextRequest) {
     if (!caseRecord || caseRecord.user_id !== userData.user.id) throw new Error("Case not found.");
     if (caseRecord.paid_tier !== "free") return NextResponse.json({ completed: true });
 
+    const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: referral } = await admin.from("creator_referrals").select("id,sale_amount,currency").eq("provider_order_id", orderId).eq("case_id", caseRecord.id).maybeSingle();
+    const expectedAmount = referral ? Number(referral.sale_amount).toFixed(2) : guidedProduct.amount;
+    const expectedCurrency = referral?.currency || guidedProduct.currency;
     const accessToken = await getPayPalAccessToken();
     const response = await fetch(`${paypalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
       method: "POST",
@@ -39,11 +43,10 @@ export async function POST(request: NextRequest) {
     const capture = unit?.payments?.captures?.[0];
     const expectedOwner = `${userData.user.id}:${caseRecord.id}`;
     if (!response.ok || payment.status !== "COMPLETED" || capture?.status !== "COMPLETED") throw new Error(payment.message || "PayPal did not complete the payment.");
-    if (unit?.custom_id !== expectedOwner || capture.amount?.currency_code !== guidedProduct.currency || capture.amount?.value !== guidedProduct.amount) {
+    if (unit?.custom_id !== expectedOwner || capture.amount?.currency_code !== expectedCurrency || capture.amount?.value !== expectedAmount) {
       throw new Error("The completed payment did not match this recovery case.");
     }
 
-    const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
     const completedAt = new Date().toISOString();
     const { error: paymentError } = await admin.from("payments").upsert({
       case_id: caseRecord.id,
@@ -51,14 +54,15 @@ export async function POST(request: NextRequest) {
       provider: "paypal",
       provider_order_id: payment.id || orderId,
       package: "guided",
-      amount: Number(guidedProduct.amount),
-      currency: guidedProduct.currency,
+      amount: Number(expectedAmount),
+      currency: expectedCurrency,
       status: "completed",
       completed_at: completedAt,
     }, { onConflict: "provider_order_id" });
     if (paymentError) throw new Error("Payment was confirmed, but access could not be recorded. Contact support with your PayPal order ID.");
     const { error: caseError } = await admin.from("cases").update({ paid_tier: "guided" }).eq("id", caseRecord.id).eq("user_id", userData.user.id);
     if (caseError) throw new Error("Payment was confirmed, but access could not be unlocked. Contact support with your PayPal order ID.");
+    if (referral) await admin.from("creator_referrals").update({ status: "earned", completed_at: completedAt }).eq("id", referral.id).eq("status", "created");
     await admin.from("case_events").insert({ case_id: caseRecord.id, user_id: userData.user.id, event_type: "payment_completed", title: "Guided recovery unlocked", details: { provider: "paypal", order_id: payment.id || orderId } });
     return NextResponse.json({ completed: true });
   } catch (error) {
