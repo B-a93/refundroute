@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getPayPalAccessToken, guidedProduct, paypalBaseUrl, requirePayPalConfiguration } from "@/lib/paypal";
+import { creatorOffer, getPayPalAccessToken, guidedProduct, normalizeReferralCode, paypalBaseUrl, requirePayPalConfiguration } from "@/lib/paypal";
 
 export const runtime = "nodejs";
 
@@ -11,10 +11,10 @@ export async function POST(request: NextRequest) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
     if (!supabaseUrl || !supabaseKey) throw new Error("Payment service configuration is missing.");
-    requirePayPalConfiguration();
+    const { serviceRoleKey } = requirePayPalConfiguration();
 
     const supabase = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: authorization } } });
-    const { case_id: caseId } = await request.json() as { case_id?: string };
+    const { case_id: caseId, referral_code: submittedCode } = await request.json() as { case_id?: string; referral_code?: string | null };
     if (!caseId) throw new Error("Case ID is required.");
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) throw new Error("Your session is no longer valid.");
@@ -22,6 +22,12 @@ export async function POST(request: NextRequest) {
     if (!caseRecord || caseRecord.user_id !== userData.user.id) throw new Error("Case not found.");
     if (caseRecord.paid_tier !== "free") return NextResponse.json({ alreadyPaid: true });
 
+    const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const referralCode = normalizeReferralCode(submittedCode);
+    const { data: partner } = referralCode
+      ? await admin.from("creator_partners").select("id,code").eq("code", referralCode).eq("status", "active").maybeSingle()
+      : { data: null };
+    const chargeAmount = partner ? creatorOffer.amount : guidedProduct.amount;
     const accessToken = await getPayPalAccessToken();
     const response = await fetch(`${paypalBaseUrl()}/v2/checkout/orders`, {
       method: "POST",
@@ -31,12 +37,16 @@ export async function POST(request: NextRequest) {
         purchase_units: [{
           custom_id: `${userData.user.id}:${caseRecord.id}`,
           description: guidedProduct.name,
-          amount: { currency_code: guidedProduct.currency, value: guidedProduct.amount },
+          amount: { currency_code: guidedProduct.currency, value: chargeAmount },
         }],
       }),
     });
     const order = await response.json().catch(() => ({})) as { id?: string; message?: string };
     if (!response.ok || !order.id) throw new Error(order.message || "PayPal could not create the order.");
+    if (partner) {
+      const { error } = await admin.from("creator_referrals").insert({ partner_id: partner.id, case_id: caseRecord.id, user_id: userData.user.id, provider_order_id: order.id, referral_code: partner.code, sale_amount: Number(creatorOffer.amount), commission_amount: Number(creatorOffer.commission), currency: creatorOffer.currency });
+      if (error) throw new Error("The creator offer could not be applied. Please try again.");
+    }
     return NextResponse.json({ id: order.id });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Payment could not be started." }, { status: 400 });
