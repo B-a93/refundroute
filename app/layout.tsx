@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ReferralTracker } from "@/components/referral-tracker";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://myresolvecenter.com"),
@@ -37,6 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <ReferralTracker />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
