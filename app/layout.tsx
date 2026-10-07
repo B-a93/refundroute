@@ -17,16 +17,22 @@ export const metadata: Metadata = {
     siteName: "MyResolveCenter",
     title: "MyResolveCenter | Find the Right Refund Route",
     description: "Check your evidence and follow the right refund process for subscriptions and online purchases.",
+    images: [{ url: "/brand/myresolvecenter-icon-512.png", width: 512, height: 512, alt: "MyResolveCenter" }],
   },
   twitter: {
     card: "summary",
     title: "MyResolveCenter | Find the Right Refund Route",
     description: "Guided refund help without connecting your bank account.",
+    images: ["/brand/myresolvecenter-icon-512.png"],
   },
   category: "consumer services",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 
@@ -48,6 +54,7 @@ export default function RootLayout({
               name: "MyResolveCenter",
               url: "https://myresolvecenter.com",
               email: "contact@myresolvecenter.com",
+              logo: "https://myresolvecenter.com/brand/myresolvecenter-icon-512.png",
               description: "Guided refund help for online subscriptions and purchases.",
             }).replace(/</g, "\\u003c"),
           }}
