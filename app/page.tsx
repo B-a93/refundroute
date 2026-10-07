@@ -106,9 +106,8 @@ export default function Home() {
     <main className="min-h-screen overflow-x-hidden bg-[#f7f9f8] text-[#13231f]">
       <header className="border-b border-[#dce5e1] bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 sm:px-8">
-          <a href="#top" className="flex items-center gap-2.5 font-semibold tracking-[-0.02em]">
-            <span className="grid size-9 place-items-center rounded-xl bg-[#0b6b53] text-white shadow-[0_8px_20px_rgba(11,107,83,.18)]"><Route className="size-5" aria-hidden="true" /></span>
-            <span className="text-lg">MyResolveCenter</span>
+          <a href="#top" aria-label="MyResolveCenter home" className="flex items-center">
+            <img src="/brand/myresolvecenter-logo.png" alt="MyResolveCenter" width="174" height="58" className="h-12 w-auto object-contain" />
           </a>
           <nav className="hidden items-center gap-7 text-sm text-[#53645f] md:flex" aria-label="Main navigation">
             <a className="transition hover:text-[#0b6b53]" href="#how-it-works">How it works</a>
