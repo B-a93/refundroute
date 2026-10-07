@@ -21,14 +21,18 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function RefundGuidePage({ params }: { params: Promise<{ slug: string }> }) {
   const guide = getRefundGuide((await params).slug);
   if (!guide) notFound();
+  const relatedGuides = refundGuides.filter((item) => item.slug !== guide.slug).slice(0, 4);
 
   const structuredData = {
     "@context": "https://schema.org",
-    "@type": "HowTo",
-    name: guide.title,
-    description: guide.description,
-    dateModified: guide.updatedAt,
-    step: guide.steps.map((step, index) => ({ "@type": "HowToStep", position: index + 1, text: step })),
+    "@graph": [
+      { "@type": "HowTo", name: guide.title, description: guide.description, dateModified: guide.updatedAt, step: guide.steps.map((step, index) => ({ "@type": "HowToStep", position: index + 1, text: step })) },
+      { "@type": "BreadcrumbList", itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Home", item: "https://myresolvecenter.com" },
+        { "@type": "ListItem", position: 2, name: "Company refund guides", item: "https://myresolvecenter.com/refunds" },
+        { "@type": "ListItem", position: 3, name: guide.name, item: `https://myresolvecenter.com/refunds/${guide.slug}` },
+      ] },
+    ],
   };
 
   return <main className="min-h-screen bg-[#f4f8f6] text-[#13231f]">
@@ -45,6 +49,7 @@ export default async function RefundGuidePage({ params }: { params: Promise<{ sl
         <aside className="space-y-5"><section className="rounded-2xl border bg-white p-6"><h2 className="flex items-center gap-2 text-xl font-semibold"><FileCheck2 className="size-5 text-[#0b755a]" />What to prepare</h2><ul className="mt-5 space-y-3">{guide.prepare.map((item) => <li key={item} className="flex gap-3 text-[#536760]"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0b8062]" />{item}</li>)}</ul></section><section className="rounded-2xl bg-[#102d25] p-6 text-white"><h2 className="text-xl font-semibold">Build your case</h2><p className="mt-3 leading-7 text-[#bfd4cd]">Check your evidence and generate a request using your own transaction details.</p><a href="/#top" className="mt-5 inline-flex items-center gap-2 font-semibold text-[#8de0c6]">Start free assessment<ArrowRight className="size-4" /></a></section></aside>
       </div>
       <div className="mt-8 border-t pt-6 text-sm leading-6 text-[#677873]"><p>Guidance checked against the company source on {new Date(`${guide.updatedAt}T00:00:00Z`).toLocaleDateString("en", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}. Policies and eligibility can vary by purchase, location and payment route.</p><a href={guide.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 font-semibold text-[#0b6b53]">{guide.sourceLabel}<ExternalLink className="size-3.5" /></a></div>
+      <section className="mt-10"><h2 className="text-2xl font-semibold">Other company refund guides</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{relatedGuides.map((item) => <a key={item.slug} href={`/refunds/${item.slug}`} className="group flex items-center justify-between rounded-xl border border-[#dce6e2] bg-white px-4 py-4 font-semibold hover:border-[#8db5a7]">{item.name}<ArrowRight className="size-4 text-[#0b8062] transition group-hover:translate-x-1" /></a>)}</div><a href="/refunds" className="mt-5 inline-flex items-center gap-2 font-semibold text-[#0b6b53]">View every company guide<ArrowRight className="size-4" /></a></section>
     </div>
   </main>;
 }
