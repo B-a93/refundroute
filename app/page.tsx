@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, Clock3, FileSearch, LockKeyhole, ReceiptText, Route, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { refundGuides } from "@/lib/refund-guides";
 import { supabase } from "@/lib/supabase/client";
 
 const subscriptionProblems = [
@@ -187,7 +188,7 @@ export default function Home() {
         </article>
       </div></section>
 
-      <section id="supported" className="py-16 sm:py-20"><div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[.8fr_1.2fr] lg:items-center"><div><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Company-specific refund guides</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Follow the process published by the company.</h2><p className="mt-5 leading-7 text-[#5b6d67]">Each guide distinguishes the company providing the service from the platform that processed the payment, links to the official route and displays when its information was last checked.</p></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{[{name:"Apple",slug:"apple"},{name:"Google Play",slug:"google-play"},{name:"Adobe",slug:"adobe"},{name:"Canva",slug:"canva"},{name:"Microsoft",slug:"microsoft"}].map((company)=><a key={company.slug} href={`/refunds/${company.slug}`} className="group flex items-center justify-center gap-2 rounded-2xl border border-[#dce6e2] bg-white px-4 py-6 text-center font-semibold shadow-sm transition hover:-translate-y-0.5 hover:border-[#8db5a7] hover:shadow-md">{company.name}<ArrowRight className="size-4 text-[#0b8062] transition group-hover:translate-x-0.5" /></a>)}<div className="rounded-2xl border border-dashed border-[#cbd8d3] bg-[#f6f9f8] px-4 py-6 text-center font-semibold text-[#667871]">More coming</div></div></div></section>
+      <section id="supported" className="py-16 sm:py-20"><div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[.8fr_1.2fr] lg:items-start"><div><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Company-specific refund guides</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Follow the process published by the company.</h2><p className="mt-5 leading-7 text-[#5b6d67]">Each guide distinguishes the company providing the service from the platform that processed the payment, links to the official route and displays when its information was last checked.</p><a href="/refunds" className="mt-5 inline-flex items-center gap-2 font-semibold text-[#0b6b53]">View all company guides<ArrowRight className="size-4" /></a></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{refundGuides.map((company)=><a key={company.slug} href={`/refunds/${company.slug}`} className="group flex items-center justify-center gap-2 rounded-2xl border border-[#dce6e2] bg-white px-4 py-6 text-center font-semibold shadow-sm transition hover:-translate-y-0.5 hover:border-[#8db5a7] hover:shadow-md">{company.name}<ArrowRight className="size-4 text-[#0b8062] transition group-hover:translate-x-0.5" /></a>)}</div></div></section>
 
       <section id="pricing" className="bg-[#102d25] py-16 text-white sm:py-20">
         <div className="mx-auto flex max-w-5xl flex-col items-center px-5 text-center sm:px-8">
