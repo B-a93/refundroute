@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ArrowRight, Route } from "lucide-react";
 import { problemGuides } from "@/lib/problem-guides";
+import { refundGuides } from "@/lib/refund-guides";
 
 export const metadata: Metadata = {
   title: "Online Refund Help Guides",
@@ -18,7 +19,8 @@ export default function GuidesPage() {
       <p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Refund help by problem</p>
       <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-[-.045em] sm:text-5xl">Understand your next step before you submit a refund request.</h1>
       <p className="mt-5 max-w-2xl text-lg leading-8 text-[#5b6d67]">Choose what happened to see the evidence to collect, common mistakes to avoid and a clear recovery process.</p>
-      <section className="mt-12"><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Online subscriptions</p><h2 className="mt-2 text-3xl font-semibold tracking-[-.035em]">Subscription and renewal problems</h2>{guideCards(subscriptionGuides)}</section>
+      <section className="mt-12"><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Company guides</p><h2 className="mt-2 text-3xl font-semibold tracking-[-.035em]">Refund and cancellation routes by company</h2><p className="mt-4 max-w-2xl leading-7 text-[#5b6d67]">Choose the company that billed you to find its official support route, the steps to follow and the evidence to prepare.</p><div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{refundGuides.map((guide) => <a key={guide.slug} href={`/refunds/${guide.slug}`} className="group rounded-2xl border border-[#dce6e2] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#8db5a7] hover:shadow-md"><p className="text-xs font-bold uppercase tracking-[.12em] text-[#0b8062]">{guide.name}</p><h3 className="mt-2 text-lg font-semibold">{guide.title}</h3><span className="mt-4 inline-flex items-center gap-2 font-semibold text-[#0b6b53]">View company guide <ArrowRight className="size-4 transition group-hover:translate-x-1" /></span></a>)}</div></section>
+      <section className="mt-16"><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Online subscriptions</p><h2 className="mt-2 text-3xl font-semibold tracking-[-.035em]">Subscription and renewal problems</h2>{guideCards(subscriptionGuides)}</section>
       <section className="mt-16"><p className="text-sm font-bold uppercase tracking-[.13em] text-[#0b8062]">Online purchases</p><h2 className="mt-2 text-3xl font-semibold tracking-[-.035em]">Orders, deliveries, returns and shopping refunds</h2>{guideCards(purchaseGuides)}</section>
     </div>
   </main>;
