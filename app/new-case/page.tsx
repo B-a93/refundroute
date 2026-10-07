@@ -16,7 +16,7 @@ const purchaseProblems = [
   ["Refund was promised but not received", "refund_promised_not_received"], ["Duplicate charge", "duplicate_charge"], ["Unrecognized purchase", "unrecognized_purchase"],
 ] as const;
 type Merchant = { id: string | null; name: string };
-const fallbackMerchants: Merchant[] = ["Apple App Store", "Google Play", "Adobe", "Canva", "Microsoft", "Other"].map(name => ({ id: null, name }));
+const fallbackMerchants: Merchant[] = ["Apple App Store", "Google Play", "Adobe", "Amazon Prime", "Canva", "ChatGPT", "Dropbox", "LinkedIn Premium", "Microsoft", "Netflix", "NordVPN", "Spotify", "YouTube Premium", "Other"].map(name => ({ id: null, name }));
 
 export default function NewCasePage() {
   const [recoveryType, setRecoveryType] = useState<"subscription" | "online_purchase">("subscription");
